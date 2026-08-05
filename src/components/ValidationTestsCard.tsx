@@ -63,50 +63,50 @@ export const ValidationTestsCard: React.FC<ValidationTestsCardProps> = ({
   return (
     <div className="bg-slate-950 border border-slate-800 shadow-md rounded-xl p-4 space-y-3">
       {/* Header Bar */}
-      <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-        <div className="flex items-center space-x-2.5">
-          <div className="p-1.5 bg-indigo-500/10 text-indigo-400 rounded-lg border border-indigo-500/20">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+        <div className="flex items-center space-x-2.5 min-w-0">
+          <div className="p-1.5 bg-indigo-500/10 text-indigo-400 rounded-lg border border-indigo-500/20 shrink-0">
             <ShieldCheck className="w-4 h-4" />
           </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-                Bateria de Testes de Validação da História
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap">
+                Bateria de Testes de Validação
               </h3>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${badgeBg}`}>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap shrink-0 ${badgeBg}`}>
                 {scorePercent}% Aprovado
               </span>
             </div>
-            <p className="text-[10px] text-slate-400 mt-0.5 font-medium">
+            <p className="text-[10px] text-slate-400 mt-0.5 font-medium whitespace-nowrap">
               {passedCount} passou • {warningsCount} alertas • {failedCount} falhas de {totalTests} testes
             </p>
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 shrink-0">
           {onExportPDF && (
             <button
               onClick={onExportPDF}
               title="Gerar e baixar o PDF do produto final com laudo de validação"
-              className="px-2.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold rounded-lg transition flex items-center space-x-1.5 shadow-sm cursor-pointer"
+              className="px-2.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold rounded-lg transition flex items-center space-x-1.5 shadow-sm cursor-pointer whitespace-nowrap shrink-0"
             >
               <FileDown className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Baixar PDF (Produto Final)</span>
+              <span className="whitespace-nowrap">Baixar PDF</span>
             </button>
           )}
 
           <button
             onClick={onReRunTests}
             title="Re-executar testes com dados atuais"
-            className="p-1.5 text-slate-300 hover:text-indigo-400 hover:bg-slate-900 rounded-lg border border-slate-800 transition flex items-center space-x-1 text-xs cursor-pointer"
+            className="px-2.5 py-1.5 text-slate-300 hover:text-indigo-400 hover:bg-slate-900 rounded-lg border border-slate-800 transition flex items-center space-x-1.5 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
           >
             <RefreshCw className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline font-semibold">Re-validar</span>
+            <span className="whitespace-nowrap">Re-validar</span>
           </button>
 
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-900 rounded-lg transition cursor-pointer"
+            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-900 rounded-lg transition cursor-pointer shrink-0"
           >
             {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>

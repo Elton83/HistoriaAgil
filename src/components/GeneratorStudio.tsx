@@ -651,47 +651,29 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
         {currentStory ? (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-5">
             {/* Top Bar Controls */}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
-              <div className="flex items-center space-x-2">
-                <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
-                  Incremento Gerado
-                </span>
-                {currentStory.projectName && (
-                  <span className="text-xs text-slate-400 font-medium">
-                    {currentStory.projectName}
+            <div className="space-y-3 border-b border-slate-800 pb-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2 min-w-0">
+                  <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase whitespace-nowrap shrink-0">
+                    Incremento Gerado
                   </span>
-                )}
-                {currentStory.attachedFileName && (
-                  <span className="bg-slate-950 text-slate-400 border border-slate-800 text-[10px] px-2 py-0.5 rounded-full truncate max-w-[150px]">
-                    📎 {currentStory.attachedFileName}
-                  </span>
-                )}
-              </div>
+                  {currentStory.projectName && (
+                    <span className="text-xs text-slate-300 font-semibold whitespace-nowrap truncate max-w-[200px]">
+                      {currentStory.projectName}
+                    </span>
+                  )}
+                  {currentStory.attachedFileName && (
+                    <span className="bg-slate-950 text-slate-400 border border-slate-800 text-[10px] px-2.5 py-0.5 rounded-full truncate max-w-[180px] whitespace-nowrap">
+                      📎 {currentStory.attachedFileName}
+                    </span>
+                  )}
+                </div>
 
-              {/* View Switches & Action Buttons */}
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={handleReRunStoryValidation}
-                  title="Executar testes de validação automática"
-                  className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition flex items-center space-x-1.5 text-xs font-bold shadow-md cursor-pointer"
-                >
-                  <ShieldCheck className="w-3.5 h-3.5 text-indigo-200" />
-                  <span>Validar História</span>
-                </button>
-
-                <button
-                  onClick={handleExportPDF}
-                  title="Gerar e baixar o PDF do produto final com laudo técnico"
-                  className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-slate-950 rounded-xl transition flex items-center space-x-1.5 text-xs font-bold shadow-md cursor-pointer"
-                >
-                  <FileDown className="w-3.5 h-3.5" />
-                  <span>Baixar PDF (Produto Final)</span>
-                </button>
-
-                <div className="bg-slate-950 border border-slate-800 p-0.5 rounded-xl flex items-center">
+                {/* Mode Switchers */}
+                <div className="bg-slate-950 border border-slate-800 p-0.5 rounded-xl flex items-center shrink-0">
                   <button
                     onClick={() => setViewMode("interactive")}
-                    className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition cursor-pointer ${
+                    className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer whitespace-nowrap ${
                       viewMode === "interactive"
                         ? "bg-indigo-600 text-white shadow"
                         : "text-slate-400 hover:text-white"
@@ -701,7 +683,7 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                   </button>
                   <button
                     onClick={() => setViewMode("markdown")}
-                    className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition cursor-pointer ${
+                    className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer whitespace-nowrap ${
                       viewMode === "markdown"
                         ? "bg-indigo-600 text-white shadow"
                         : "text-slate-400 hover:text-white"
@@ -711,7 +693,7 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                   </button>
                   <button
                     onClick={() => setViewMode("jira")}
-                    className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition cursor-pointer ${
+                    className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer whitespace-nowrap ${
                       viewMode === "jira"
                         ? "bg-indigo-600 text-white shadow"
                         : "text-slate-400 hover:text-white"
@@ -720,42 +702,63 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                     JIRA Syntax
                   </button>
                 </div>
+              </div>
+
+              {/* Action Buttons Toolbar */}
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  onClick={handleReRunStoryValidation}
+                  title="Executar testes de validação automática"
+                  className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition flex items-center space-x-1.5 text-xs font-bold shadow-md cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-indigo-200" />
+                  <span className="whitespace-nowrap">Validar História</span>
+                </button>
+
+                <button
+                  onClick={handleExportPDF}
+                  title="Gerar e baixar o PDF do produto final com laudo técnico"
+                  className="px-3 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl transition flex items-center space-x-1.5 text-xs font-bold shadow-md cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <FileDown className="w-3.5 h-3.5" />
+                  <span className="whitespace-nowrap">Baixar PDF Final</span>
+                </button>
 
                 <button
                   onClick={onOpenRefineModal}
                   title="Refinar com IA"
-                  className="p-2 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 rounded-xl transition flex items-center space-x-1 text-xs font-semibold cursor-pointer"
+                  className="px-3 py-2 bg-indigo-950/80 border border-indigo-800/80 text-indigo-300 hover:bg-indigo-900 rounded-xl transition flex items-center space-x-1.5 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
                 >
-                  <Wand2 className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Refinar</span>
+                  <Wand2 className="w-3.5 h-3.5 text-indigo-400" />
+                  <span className="whitespace-nowrap">Refinar</span>
                 </button>
 
                 <button
                   onClick={onOpenAuditModal}
                   title="Auditoria INVEST"
-                  className="p-2 bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 rounded-xl transition flex items-center space-x-1 text-xs font-semibold cursor-pointer"
+                  className="px-3 py-2 bg-emerald-950/80 border border-emerald-800/80 text-emerald-300 hover:bg-emerald-900 rounded-xl transition flex items-center space-x-1.5 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
                 >
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">INVEST</span>
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="whitespace-nowrap">INVEST</span>
                 </button>
 
                 <button
                   onClick={handleSaveBacklog}
-                  className={`p-2 rounded-xl transition flex items-center space-x-1.5 text-xs font-semibold cursor-pointer ${
+                  className={`px-3 py-2 rounded-xl transition flex items-center space-x-1.5 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 ${
                     savedFeedback
                       ? "bg-emerald-600 text-white"
-                      : "bg-slate-800 hover:bg-slate-900 text-white font-bold"
+                      : "bg-slate-800 hover:bg-slate-700 text-white font-bold"
                   }`}
                 >
                   {savedFeedback ? (
                     <>
                       <Check className="w-3.5 h-3.5" />
-                      <span>Salvo!</span>
+                      <span className="whitespace-nowrap">Salvo!</span>
                     </>
                   ) : (
                     <>
                       <BookmarkPlus className="w-3.5 h-3.5" />
-                      <span>Salvar no Quadro</span>
+                      <span className="whitespace-nowrap">Salvar no Quadro</span>
                     </>
                   )}
                 </button>
