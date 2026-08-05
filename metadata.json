@@ -1,0 +1,6 @@
+{
+  "name": "Gerador de Histórias de Usuário e Requisitos Ágeis",
+  "description": "Sistema para criação de levantamentos de requisitos, Histórias de Usuário, Regras de Negócio, Critérios de Aceite e Cenários BDD integrados em um fluxo de trabalho ágil.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
