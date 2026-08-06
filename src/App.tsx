@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { Header } from "./components/Header";
+import { SidebarNav } from "./components/SidebarNav";
 import { GeneratorStudio } from "./components/GeneratorStudio";
 import { BacklogKanban } from "./components/BacklogKanban";
+import { ReportsView } from "./components/ReportsView";
+import { AdminPanel } from "./components/AdminPanel";
+import { LoginScreen } from "./components/LoginScreen";
 import { RefineModal } from "./components/RefineModal";
 import { InvestAuditModal } from "./components/InvestAuditModal";
 import { MethodologyGuideModal } from "./components/MethodologyGuideModal";
@@ -17,10 +20,10 @@ import {
   deleteStoryFromSupabase,
   clearAllStoriesFromSupabase,
 } from "./services/supabaseService";
-import { CheckCircle2, AlertCircle, Loader2, Database } from "lucide-react";
+import { CheckCircle2, AlertCircle, Loader2, Sparkles, PlusCircle } from "lucide-react";
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<"generator" | "kanban" | "audit" | "guide">("generator");
+  const [activeTab, setActiveTab] = useState<"generator" | "kanban" | "reports" | "audit" | "guide" | "admin">("generator");
 
   // User Authentication State
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
@@ -50,11 +53,25 @@ export default function App() {
     } catch (e) {
       console.error("Failed to save user:", e);
     }
+    showToast(`Sessão iniciada como ${user.name} (${user.role})!`, "success");
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
     localStorage.removeItem("agile_studio_user");
+    showToast("Sessão encerrada com sucesso.", "info");
+  };
+
+  const handleUpdateCurrentUserRole = (newRole: string) => {
+    if (!currentUser) return;
+    const updated = { ...currentUser, role: newRole };
+    setCurrentUser(updated);
+    try {
+      localStorage.setItem("agile_studio_user", JSON.stringify(updated));
+    } catch (e) {
+      console.error("Failed to update user role:", e);
+    }
+    showToast(`Seu papel foi atualizado para ${newRole}!`, "success");
   };
 
   // Stories list in backlog
@@ -97,10 +114,10 @@ export default function App() {
   // Initial load from Supabase if configured
   useEffect(() => {
     async function loadDataFromSupabase() {
-      if (!isSupabaseConfigured()) return;
+      if (!isSupabaseConfigured() || !currentUser) return;
 
       setIsLoadingStories(true);
-      const result = await fetchStoriesFromSupabase(currentUser?.id);
+      const result = await fetchStoriesFromSupabase();
       setIsLoadingStories(false);
 
       if (result.isSupabase && !result.error && result.stories.length > 0) {
@@ -112,7 +129,6 @@ export default function App() {
         if (!currentStory || currentStory.id === INITIAL_SAMPLE_STORY.id) {
           setCurrentStory(storiesWithReports[0]);
         }
-        showToast("Histórias de usuário carregadas do Supabase PostgreSQL!", "info");
       }
     }
 
@@ -128,8 +144,8 @@ export default function App() {
     }
   }, [stories]);
 
-  // Handle Tab changes from Header
-  const handleTabChange = (tab: "generator" | "kanban" | "audit" | "guide") => {
+  // Handle Tab changes from Navigation
+  const handleTabChange = (tab: "generator" | "kanban" | "reports" | "audit" | "guide" | "admin") => {
     if (tab === "guide") {
       setIsGuideModalOpen(true);
     } else {
@@ -181,7 +197,7 @@ export default function App() {
         rawMarkdown: data.rawMarkdown,
         projectName: projectName || "Projeto Geral",
         epicName: epicName || "Incrementos",
-        requester: requester || "Ana Paula Costa - GPM de Pagamentos",
+        requester: requester || currentUser?.name || "Product Owner",
         status: "draft",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -189,14 +205,14 @@ export default function App() {
         attachedFileName: images && images[0]?.fileName ? images[0].fileName : undefined,
       };
 
-      // Run automatic validation tests
       const validationReport = validateUserStory(rawStory);
       const newStory: UserStory = { ...rawStory, validationReport };
 
       setCurrentStory(newStory);
+      showToast("História de usuário gerada com sucesso!", "success");
     } catch (error) {
       console.error("Error generating story:", error);
-      alert("Erro ao comunicar com o servidor de IA. Verifique as configurações e tente novamente.");
+      showToast("Erro ao gerar história via servidor de IA.", "error");
     } finally {
       setIsGenerating(false);
     }
@@ -242,9 +258,10 @@ export default function App() {
 
       setCurrentStory(updatedStory);
       setIsRefineModalOpen(false);
+      showToast("História refinada com sucesso!", "success");
     } catch (error) {
       console.error("Error refining story:", error);
-      alert("Não foi possível refinar a história. Tente novamente.");
+      showToast("Não foi possível refinar a história.", "error");
     } finally {
       setIsRefining(false);
     }
@@ -269,7 +286,6 @@ export default function App() {
       const auditData: InvestAudit = await response.json();
       setCurrentAudit(auditData);
 
-      // Save audit score and story points recommendation to story
       if (auditData.estimatedStoryPoints) {
         setCurrentStory({
           ...currentStory,
@@ -291,7 +307,6 @@ export default function App() {
       updatedAt: new Date().toISOString(),
     };
 
-    // Update state locally for instant UI response
     setStories((prev) => {
       const existsIndex = prev.findIndex((s) => s.id === storyToSave.id);
       if (existsIndex >= 0) {
@@ -303,13 +318,11 @@ export default function App() {
       }
     });
 
-    // Save to Supabase
     if (isSupabaseConfigured()) {
       const res = await saveStoryToSupabase(storyWithTimestamp, currentUser?.id);
       if (res.error) {
         showToast(`Salvo localmente (Erro Supabase: ${res.error})`, "error");
       } else {
-        // Update story ID if DB generated UUID
         if (res.story && res.story.id !== storyWithTimestamp.id) {
           setStories((prev) =>
             prev.map((s) => (s.id === storyToSave.id ? res.story : s))
@@ -318,10 +331,10 @@ export default function App() {
             setCurrentStory(res.story);
           }
         }
-        showToast("História salva no Supabase PostgreSQL com sucesso!", "success");
+        showToast("História salva no Supabase PostgreSQL!", "success");
       }
     } else {
-      showToast("História salva no backlog (Modo Cache Local)", "info");
+      showToast("História salva no backlog (Cache Local)", "info");
     }
   };
 
@@ -358,7 +371,7 @@ export default function App() {
     }
   };
 
-  // Reset all system data for real requirements entry
+  // Reset all system data
   const handleResetSystem = async () => {
     if (
       confirm(
@@ -412,75 +425,139 @@ export default function App() {
     setActiveTab("generator");
   };
 
+  // MANDATORY LOGIN WALL: If not authenticated, render LoginScreen
+  if (!currentUser) {
+    return <LoginScreen onLogin={handleLogin} />;
+  }
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
-      {/* Global Application Header */}
-      <Header
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col lg:flex-row font-sans selection:bg-indigo-500 selection:text-white">
+      {/* Left Sidebar Navigation */}
+      <SidebarNav
         activeTab={activeTab}
         setActiveTab={handleTabChange}
         savedStoriesCount={stories.length}
         readyStoriesCount={stories.filter((s) => s.status === "ready").length}
         currentUser={currentUser}
-        onOpenAuthModal={() => setIsAuthModalOpen(true)}
+        onLogout={handleLogout}
         onResetSystem={handleResetSystem}
+        onCreateNewStory={handleCreateNewStory}
       />
 
-      {/* Toast Notification Floating Banner */}
-      {toastMessage && (
-        <div className="fixed bottom-5 right-5 z-50 animate-bounce">
-          <div
-            className={`px-4 py-3 rounded-xl border shadow-2xl flex items-center space-x-3 text-xs font-semibold backdrop-blur-md ${
-              toastMessage.type === "success"
-                ? "bg-emerald-950/90 border-emerald-500/50 text-emerald-200"
-                : toastMessage.type === "error"
-                ? "bg-rose-950/90 border-rose-500/50 text-rose-200"
-                : "bg-indigo-950/90 border-indigo-500/50 text-indigo-200"
-            }`}
-          >
-            {toastMessage.type === "error" ? (
-              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-            ) : (
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            )}
-            <span>{toastMessage.text}</span>
+      {/* Main Content View Container */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Top Header Breadcrumb / Header Bar */}
+        <header className="bg-slate-900/60 border-b border-slate-800/80 px-6 py-4 hidden lg:flex items-center justify-between sticky top-0 z-30 backdrop-blur-md">
+          <div>
+            <h2 className="text-base font-bold text-white flex items-center space-x-2">
+              <span>
+                {activeTab === "generator" && "Gerador Ágil & Estúdio de Requisitos"}
+                {activeTab === "kanban" && "Quadro Backlog & Fluxo Kanban"}
+                {activeTab === "reports" && "Relatórios Ágeis & Analytics do Backlog"}
+                {activeTab === "admin" && "Painel de Governança & Controle de Acesso (RBAC)"}
+                {activeTab === "guide" && "Guia Metodológico & Boas Práticas Scrum"}
+              </span>
+            </h2>
+            <p className="text-xs text-slate-400">
+              {activeTab === "generator" && "Crie e edite histórias com AC, RN e BDD estruturados"}
+              {activeTab === "kanban" && `Gestão e homologação de ${stories.length} histórias cadastradas`}
+              {activeTab === "reports" && "Métricas de Story Points, maturidade de requisitos e exportação CSV"}
+              {activeTab === "admin" && "Gerencie perfis, permissões e consulte métricas do banco de dados"}
+              {activeTab === "guide" && "Diretrizes INVEST, Gherkin e Engenharia de Requisitos"}
+            </p>
           </div>
-        </div>
-      )}
 
-      {/* Main Workspace Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {isLoadingStories && (
-          <div className="mb-4 p-3 bg-indigo-950/40 border border-indigo-800/50 rounded-xl flex items-center space-x-3 text-indigo-300 text-xs">
-            <Loader2 className="w-4 h-4 animate-spin shrink-0 text-indigo-400" />
-            <span>Sincronizando histórias com o banco de dados Supabase PostgreSQL...</span>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={handleCreateNewStory}
+              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-md shadow-indigo-600/20 transition flex items-center space-x-1.5 cursor-pointer"
+            >
+              <PlusCircle className="w-3.5 h-3.5" />
+              <span>+ Nova História</span>
+            </button>
+          </div>
+        </header>
+
+        {/* Toast Notification Floating Banner */}
+        {toastMessage && (
+          <div className="fixed bottom-5 right-5 z-50 animate-bounce">
+            <div
+              className={`px-4 py-3 rounded-xl border shadow-2xl flex items-center space-x-3 text-xs font-semibold backdrop-blur-md ${
+                toastMessage.type === "success"
+                  ? "bg-emerald-950/90 border-emerald-500/50 text-emerald-200"
+                  : toastMessage.type === "error"
+                  ? "bg-rose-950/90 border-rose-500/50 text-rose-200"
+                  : "bg-indigo-950/90 border-indigo-500/50 text-indigo-200"
+              }`}
+            >
+              {toastMessage.type === "error" ? (
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              )}
+              <span>{toastMessage.text}</span>
+            </div>
           </div>
         )}
-        {activeTab === "generator" && (
-          <GeneratorStudio
-            currentStory={currentStory}
-            onStoryChange={setCurrentStory}
-            onGenerateStory={handleGenerateStory}
-            isGenerating={isGenerating}
-            onSaveToBacklog={handleSaveToBacklog}
-            onOpenRefineModal={() => setIsRefineModalOpen(true)}
-            onOpenAuditModal={handleOpenAuditModal}
-            onResetSystem={handleResetSystem}
-          />
-        )}
 
-        {activeTab === "kanban" && (
-          <BacklogKanban
-            stories={stories}
-            onSelectStory={(story) => {
-              setCurrentStory(story);
-              setActiveTab("generator");
-            }}
-            onUpdateStatus={handleUpdateStatus}
-            onDeleteStory={handleDeleteStory}
-            onCreateNewStory={handleCreateNewStory}
-          />
-        )}
-      </main>
+        {/* Main Workspace Area */}
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          {isLoadingStories && (
+            <div className="mb-4 p-3 bg-indigo-950/40 border border-indigo-800/50 rounded-xl flex items-center space-x-3 text-indigo-300 text-xs">
+              <Loader2 className="w-4 h-4 animate-spin shrink-0 text-indigo-400" />
+              <span>Sincronizando histórias com o banco de dados Supabase PostgreSQL...</span>
+            </div>
+          )}
+
+          {activeTab === "generator" && (
+            <GeneratorStudio
+              currentStory={currentStory}
+              onStoryChange={setCurrentStory}
+              onGenerateStory={handleGenerateStory}
+              isGenerating={isGenerating}
+              onSaveToBacklog={handleSaveToBacklog}
+              onOpenRefineModal={() => setIsRefineModalOpen(false)}
+              onOpenAuditModal={handleOpenAuditModal}
+              onResetSystem={handleResetSystem}
+            />
+          )}
+
+          {activeTab === "kanban" && (
+            <BacklogKanban
+              stories={stories}
+              onSelectStory={(story) => {
+                setCurrentStory(story);
+                setActiveTab("generator");
+              }}
+              onUpdateStatus={handleUpdateStatus}
+              onDeleteStory={handleDeleteStory}
+              onCreateNewStory={handleCreateNewStory}
+            />
+          )}
+
+          {activeTab === "reports" && (
+            <ReportsView stories={stories} showToast={showToast} />
+          )}
+
+          {activeTab === "admin" && (
+            <AdminPanel
+              currentUser={currentUser}
+              stories={stories}
+              onUpdateCurrentUserRole={handleUpdateCurrentUserRole}
+              onResetSystem={handleResetSystem}
+              showToast={showToast}
+            />
+          )}
+        </main>
+
+        {/* Footer */}
+        <footer className="border-t border-slate-800/80 bg-slate-900/60 py-4 text-center text-xs text-slate-400">
+          <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+            <span>Histórias Ágeis • Engenharia de Requisitos & BDD</span>
+            <span className="text-slate-400 font-medium">Alinhado ao padrão INVEST & Framework Scrum</span>
+          </div>
+        </footer>
+      </div>
 
       {/* Modals */}
       <RefineModal
@@ -509,14 +586,6 @@ export default function App() {
         onLogin={handleLogin}
         onLogout={handleLogout}
       />
-
-      {/* Footer */}
-      <footer className="border-t border-slate-800 bg-slate-900/80 py-4 text-center text-xs text-slate-400">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>Histórias Ágeis • Engenharia de Requisitos & BDD</span>
-          <span className="text-slate-400 font-medium">Alinhado ao padrão INVEST & Framework Scrum</span>
-        </div>
-      </footer>
     </div>
   );
 }

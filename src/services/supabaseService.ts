@@ -312,3 +312,73 @@ export async function syncUserProfileWithSupabase(
     return { profile, isSupabase: true, error: err.message };
   }
 }
+
+/**
+ * Fetch all registered profiles from Supabase for RBAC Admin Panel
+ */
+export async function fetchAllProfilesFromSupabase(): Promise<{
+  profiles: UserProfile[];
+  isSupabase: boolean;
+  error?: string;
+}> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return { profiles: [], isSupabase: false };
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("[Supabase] Error fetching profiles:", error);
+      return { profiles: [], isSupabase: true, error: error.message };
+    }
+
+    const profiles: UserProfile[] = (data || []).map((row) => ({
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      role: row.role || "Product Owner",
+      avatarColor: row.avatar_color || "from-indigo-500 to-indigo-700",
+    }));
+
+    return { profiles, isSupabase: true };
+  } catch (err: any) {
+    console.error("[Supabase] Error fetching profiles:", err);
+    return { profiles: [], isSupabase: true, error: err.message || "Erro desconhecido" };
+  }
+}
+
+/**
+ * Update a user's role in Supabase
+ */
+export async function updateUserRoleInSupabase(
+  email: string,
+  newRole: string
+): Promise<{ isSupabase: boolean; error?: string }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return { isSupabase: false };
+  }
+
+  try {
+    const { error } = await supabase
+      .from("profiles")
+      .update({ role: newRole, updated_at: new Date().toISOString() })
+      .eq("email", email);
+
+    if (error) {
+      console.error("[Supabase] Error updating user role:", error);
+      return { isSupabase: true, error: error.message };
+    }
+
+    return { isSupabase: true };
+  } catch (err: any) {
+    console.error("[Supabase] Error updating user role:", err);
+    return { isSupabase: true, error: err.message };
+  }
+}
+
