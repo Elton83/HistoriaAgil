@@ -14,12 +14,22 @@ import {
   BarChart3,
   Server,
   Key,
+  UserPlus,
+  Edit3,
+  Trash2,
+  X,
+  Mail,
+  User,
+  Plus,
+  Loader2,
 } from "lucide-react";
 import { UserProfile } from "./AuthModal";
 import { UserStory } from "../types";
 import {
   fetchAllProfilesFromSupabase,
   updateUserRoleInSupabase,
+  saveUserProfileToSupabase,
+  deleteUserProfileFromSupabase,
 } from "../services/supabaseService";
 import { isSupabaseConfigured } from "../lib/supabase";
 
@@ -37,6 +47,15 @@ const AVAILABLE_ROLES = [
   "Scrum Master & Agile Coach",
   "Tech Lead / Arquiteto",
   "Desenvolvedor / QA",
+];
+
+const AVATAR_COLORS = [
+  { name: "Indigo", value: "from-indigo-500 to-indigo-700" },
+  { name: "Esmeralda", value: "from-emerald-500 to-teal-700" },
+  { name: "Âmbar", value: "from-amber-500 to-orange-700" },
+  { name: "Rosa", value: "from-rose-500 to-pink-700" },
+  { name: "Roxo", value: "from-purple-500 to-indigo-800" },
+  { name: "Azul", value: "from-sky-500 to-blue-700" },
 ];
 
 const PERMISSIONS_MATRIX = [
@@ -95,6 +114,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isLoadingProfiles, setIsLoadingProfiles] = useState(false);
   const [activeTab, setActiveTab] = useState<"users" | "matrix" | "metrics">("users");
   const [updatingEmail, setUpdatingEmail] = useState<string | null>(null);
+
+  // User CRUD Modal State
+  const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+  const [formName, setFormName] = useState("");
+  const [formEmail, setFormEmail] = useState("");
+  const [formRole, setFormRole] = useState(AVAILABLE_ROLES[1]);
+  const [formAvatarColor, setFormAvatarColor] = useState(AVATAR_COLORS[0].value);
+  const [isSavingUser, setIsSavingUser] = useState(false);
 
   const isDbConnected = isSupabaseConfigured();
 
@@ -163,10 +191,82 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
+  const handleOpenCreateUser = () => {
+    setEditingUser(null);
+    setFormName("");
+    setFormEmail("");
+    setFormRole("Product Owner");
+    setFormAvatarColor(AVATAR_COLORS[0].value);
+    setIsUserModalOpen(true);
+  };
+
+  const handleOpenEditUser = (user: UserProfile) => {
+    setEditingUser(user);
+    setFormName(user.name);
+    setFormEmail(user.email);
+    setFormRole(user.role);
+    setFormAvatarColor(user.avatarColor || AVATAR_COLORS[0].value);
+    setIsUserModalOpen(true);
+  };
+
+  const handleSaveUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formName.trim() || !formEmail.trim()) {
+      if (showToast) showToast("Por favor preencha nome e e-mail.", "error");
+      return;
+    }
+
+    setIsSavingUser(true);
+
+    const targetUser: UserProfile = {
+      id: editingUser ? editingUser.id : `u-${Date.now()}`,
+      name: formName.trim(),
+      email: formEmail.trim().toLowerCase(),
+      role: formRole,
+      avatarColor: formAvatarColor,
+    };
+
+    const res = await saveUserProfileToSupabase(targetUser);
+    setIsSavingUser(false);
+
+    if (res.error) {
+      if (showToast) showToast(`Erro ao salvar no Supabase: ${res.error}`, "error");
+    } else {
+      if (editingUser) {
+        setProfiles((prev) =>
+          prev.map((p) => (p.id === targetUser.id || p.email === targetUser.email ? targetUser : p))
+        );
+        if (showToast) showToast(`Usuário ${targetUser.name} atualizado com sucesso!`, "success");
+      } else {
+        setProfiles((prev) => [targetUser, ...prev.filter((p) => p.email !== targetUser.email)]);
+        if (showToast) showToast(`Usuário ${targetUser.name} criado com sucesso!`, "success");
+      }
+
+      if (targetUser.email === currentUser?.email && onUpdateCurrentUserRole) {
+        onUpdateCurrentUserRole(targetUser.role);
+      }
+
+      setIsUserModalOpen(false);
+    }
+  };
+
+  const handleDeleteUser = async (user: UserProfile) => {
+    if (confirm(`Tem certeza que deseja excluir o acesso de "${user.name}" (${user.email})?`)) {
+      setUpdatingEmail(user.email);
+      const res = await deleteUserProfileFromSupabase(user.email);
+      setUpdatingEmail(null);
+
+      if (res.error) {
+        if (showToast) showToast(`Erro ao excluir no banco: ${res.error}`, "error");
+      } else {
+        setProfiles((prev) => prev.filter((p) => p.email !== user.email));
+        if (showToast) showToast(`Acesso de ${user.name} removido com sucesso.`, "info");
+      }
+    }
+  };
+
   const totalPoints = stories.reduce((acc, curr) => acc + (curr.storyPoints || 0), 0);
   const readyStories = stories.filter((s) => s.status === "ready").length;
-  const inProgressStories = stories.filter((s) => s.status === "in_progress").length;
-  const doneStories = stories.filter((s) => s.status === "done").length;
 
   return (
     <div className="space-y-6">
@@ -187,7 +287,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Gerencie permissões, usuários, papéis da equipe e acompanhe métricas da base PostgreSQL.
+                Crie, altere e exclua usuários, gerencie permissões e consulte métricas da base de dados.
               </p>
             </div>
           </div>
@@ -209,7 +309,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <div className="flex items-center space-x-2">
               <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
               <span>
-                Você está navegando com o papel <strong>{currentUser?.role}</strong>. Para alterar papéis de outros usuários, ative o perfil Administrador.
+                Você está navegando como <strong>{currentUser?.role}</strong>. Para gerenciar usuários e acessos, ative o perfil Administrador.
               </span>
             </div>
             {onUpdateCurrentUserRole && (
@@ -225,42 +325,55 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       </div>
 
       {/* Tabs Selector */}
-      <div className="flex items-center space-x-2 border-b border-slate-800 pb-3">
-        <button
-          onClick={() => setActiveTab("users")}
-          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
-            activeTab === "users"
-              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
-              : "text-slate-400 hover:bg-slate-900 hover:text-white"
-          }`}
-        >
-          <Users className="w-4 h-4" />
-          <span>Usuários & Papéis ({profiles.length})</span>
-        </button>
+      <div className="flex items-center justify-between border-b border-slate-800 pb-3 flex-wrap gap-2">
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => setActiveTab("users")}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+              activeTab === "users"
+                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
+                : "text-slate-400 hover:bg-slate-900 hover:text-white"
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>Usuários & Acessos ({profiles.length})</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab("matrix")}
-          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
-            activeTab === "matrix"
-              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
-              : "text-slate-400 hover:bg-slate-900 hover:text-white"
-          }`}
-        >
-          <Key className="w-4 h-4" />
-          <span>Matriz de Permissões (RBAC)</span>
-        </button>
+          <button
+            onClick={() => setActiveTab("matrix")}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+              activeTab === "matrix"
+                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
+                : "text-slate-400 hover:bg-slate-900 hover:text-white"
+            }`}
+          >
+            <Key className="w-4 h-4" />
+            <span>Matriz de Permissões (RBAC)</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab("metrics")}
-          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
-            activeTab === "metrics"
-              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
-              : "text-slate-400 hover:bg-slate-900 hover:text-white"
-          }`}
-        >
-          <BarChart3 className="w-4 h-4" />
-          <span>Métricas do Banco & Infra</span>
-        </button>
+          <button
+            onClick={() => setActiveTab("metrics")}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+              activeTab === "metrics"
+                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
+                : "text-slate-400 hover:bg-slate-900 hover:text-white"
+            }`}
+          >
+            <BarChart3 className="w-4 h-4" />
+            <span>Métricas do Banco & Infra</span>
+          </button>
+        </div>
+
+        {activeTab === "users" && (
+          <button
+            onClick={handleOpenCreateUser}
+            disabled={!isAdmin}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/20 transition flex items-center space-x-2 cursor-pointer shrink-0"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>+ Criar Novo Usuário / Acesso</span>
+          </button>
+        )}
       </div>
 
       {/* Tab 1: Users & Roles List */}
@@ -270,10 +383,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <div>
               <h3 className="text-base font-bold text-white flex items-center space-x-2">
                 <Users className="w-5 h-5 text-indigo-400" />
-                <span>Perfis Cadastrados e Controle de Papéis</span>
+                <span>Gestão Completa de Usuários e Níveis de Acesso</span>
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                Listagem sincronizada diretamente do Supabase PostgreSQL (`public.profiles`).
+                Cadastre, edite papéis ou remova acessos sincronizados no Supabase PostgreSQL (`public.profiles`).
               </p>
             </div>
 
@@ -283,7 +396,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               className="flex items-center space-x-2 px-3 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-xs text-slate-300 transition cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoadingProfiles ? "animate-spin text-indigo-400" : ""}`} />
-              <span>Atualizar Lista</span>
+              <span>Atualizar</span>
             </button>
           </div>
 
@@ -293,8 +406,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <tr>
                   <th className="px-4 py-3">Usuário</th>
                   <th className="px-4 py-3">E-mail</th>
-                  <th className="px-4 py-3">Papel Atual (RBAC)</th>
-                  <th className="px-4 py-3 text-right">Ação Admin</th>
+                  <th className="px-4 py-3">Papel / Função (RBAC)</th>
+                  <th className="px-4 py-3 text-right">Ações Admin</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 bg-slate-900/40">
@@ -321,24 +434,46 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       </td>
                       <td className="px-4 py-3 text-slate-400 font-mono text-[11px]">{p.email}</td>
                       <td className="px-4 py-3">
-                        <span className="inline-flex items-center space-x-1.5 bg-indigo-950/80 border border-indigo-800/80 text-indigo-300 px-2.5 py-1 rounded-lg text-[11px] font-bold">
-                          <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
-                          <span>{p.role}</span>
-                        </span>
+                        <div className="flex items-center space-x-2">
+                          <span className="inline-flex items-center space-x-1.5 bg-indigo-950/80 border border-indigo-800/80 text-indigo-300 px-2.5 py-1 rounded-lg text-[11px] font-bold">
+                            <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
+                            <span>{p.role}</span>
+                          </span>
+
+                          <select
+                            disabled={!isAdmin || updatingEmail === p.email}
+                            value={p.role}
+                            onChange={(e) => handleRoleChange(p.email, e.target.value)}
+                            className="bg-slate-950 border border-slate-800 text-slate-300 text-[11px] rounded-lg px-2 py-1 focus:border-indigo-500 focus:outline-none disabled:opacity-50 cursor-pointer"
+                          >
+                            {AVAILABLE_ROLES.map((role) => (
+                              <option key={role} value={role}>
+                                {role}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <select
-                          disabled={!isAdmin || updatingEmail === p.email}
-                          value={p.role}
-                          onChange={(e) => handleRoleChange(p.email, e.target.value)}
-                          className="bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded-xl px-2.5 py-1.5 focus:border-indigo-500 focus:outline-none disabled:opacity-50 cursor-pointer"
-                        >
-                          {AVAILABLE_ROLES.map((role) => (
-                            <option key={role} value={role}>
-                              {role}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="flex items-center justify-end space-x-2">
+                          <button
+                            onClick={() => handleOpenEditUser(p)}
+                            disabled={!isAdmin}
+                            title="Editar Dados do Usuário"
+                            className="p-1.5 bg-slate-950 hover:bg-indigo-950/60 border border-slate-800 hover:border-indigo-800 text-slate-300 hover:text-indigo-300 rounded-lg transition cursor-pointer disabled:opacity-40"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => handleDeleteUser(p)}
+                            disabled={!isAdmin || updatingEmail === p.email}
+                            title="Excluir Usuário"
+                            className="p-1.5 bg-slate-950 hover:bg-rose-950/60 border border-slate-800 hover:border-rose-800 text-slate-400 hover:text-rose-400 rounded-lg transition cursor-pointer disabled:opacity-40"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -457,6 +592,131 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </button>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* User Create / Edit Modal */}
+      {isUserModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative space-y-5 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                  <UserPlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    {editingUser ? "Alterar Usuário / Acesso" : "Criar Novo Usuário / Acesso"}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    {editingUser ? "Atualize dados e papel da conta" : "Defina o e-mail e papel de acesso"}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsUserModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveUser} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1.5">
+                  Nome Completo <span className="text-rose-400">*</span>
+                </label>
+                <div className="relative">
+                  <User className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: Roberto Silva"
+                    value={formName}
+                    onChange={(e) => setFormName(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1.5">
+                  E-mail do Usuário <span className="text-rose-400">*</span>
+                </label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                  <input
+                    type="email"
+                    required
+                    disabled={!!editingUser}
+                    placeholder="Ex: roberto.silva@empresa.com"
+                    value={formEmail}
+                    onChange={(e) => setFormEmail(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1.5">
+                  Papel de Acesso (RBAC) <span className="text-rose-400">*</span>
+                </label>
+                <select
+                  value={formRole}
+                  onChange={(e) => setFormRole(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
+                >
+                  {AVAILABLE_ROLES.map((role) => (
+                    <option key={role} value={role}>
+                      {role}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1.5">Cor do Avatar</label>
+                <div className="grid grid-cols-6 gap-2">
+                  {AVATAR_COLORS.map((c) => (
+                    <button
+                      key={c.value}
+                      type="button"
+                      onClick={() => setFormAvatarColor(c.value)}
+                      className={`w-full h-8 rounded-lg bg-gradient-to-tr ${c.value} transition border cursor-pointer ${
+                        formAvatarColor === c.value ? "border-white ring-2 ring-indigo-500" : "border-transparent"
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-3 flex items-center justify-end space-x-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsUserModalOpen(false)}
+                  className="px-4 py-2 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 font-semibold rounded-xl transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={isSavingUser}
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/20 transition flex items-center space-x-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingUser ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Salvando...</span>
+                    </>
+                  ) : (
+                    <span>{editingUser ? "Salvar Alterações" : "Criar Usuário"}</span>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

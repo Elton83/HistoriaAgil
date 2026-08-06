@@ -40,6 +40,10 @@ export interface SupabaseProfileRow {
   updated_at?: string;
 }
 
+// Helper to check if string is valid UUID
+export const isValidUuid = (id?: string | null): boolean =>
+  id ? /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id) : false;
+
 // Convert DB row to UserStory model
 export function mapRowToUserStory(row: SupabaseUserStoryRow): UserStory {
   return {
@@ -96,13 +100,9 @@ export function mapUserStoryToRow(story: UserStory, userId?: string | null): Sup
     attached_file_name: story.attachedFileName || null,
   };
 
-  if (userId) {
+  if (userId && isValidUuid(userId)) {
     row.user_id = userId;
   }
-
-  // Check if string is valid UUID
-  const isValidUuid = (id: string) =>
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
 
   if (story.id && isValidUuid(story.id)) {
     row.id = story.id;
@@ -127,21 +127,21 @@ export async function fetchStoriesFromSupabase(userId?: string): Promise<{
   try {
     let query = supabase.from("user_stories").select("*").order("created_at", { ascending: false });
 
-    if (userId) {
+    if (userId && isValidUuid(userId)) {
       query = query.eq("user_id", userId);
     }
 
     const { data, error } = await query;
 
     if (error) {
-      console.error("[Supabase] Error fetching stories:", error);
+      console.warn("[Supabase] Error fetching stories:", error.message);
       return { stories: [], isSupabase: true, error: error.message };
     }
 
     const stories = (data || []).map(mapRowToUserStory);
     return { stories, isSupabase: true };
   } catch (err: any) {
-    console.error("[Supabase] Unexpected error fetching stories:", err);
+    console.warn("[Supabase] Unexpected error fetching stories:", err);
     return { stories: [], isSupabase: true, error: err.message || "Erro desconhecido" };
   }
 }
@@ -192,6 +192,10 @@ export async function updateStoryStatusInSupabase(
     return { isSupabase: false };
   }
 
+  if (!isValidUuid(id)) {
+    return { isSupabase: false };
+  }
+
   try {
     const { error } = await supabase
       .from("user_stories")
@@ -199,13 +203,13 @@ export async function updateStoryStatusInSupabase(
       .eq("id", id);
 
     if (error) {
-      console.error("[Supabase] Error updating story status:", error);
+      console.warn("[Supabase] Error updating story status:", error.message);
       return { isSupabase: true, error: error.message };
     }
 
     return { isSupabase: true };
   } catch (err: any) {
-    console.error("[Supabase] Error updating story status:", err);
+    console.warn("[Supabase] Error updating story status:", err);
     return { isSupabase: true, error: err.message };
   }
 }
@@ -221,17 +225,21 @@ export async function deleteStoryFromSupabase(
     return { isSupabase: false };
   }
 
+  if (!isValidUuid(id)) {
+    return { isSupabase: false };
+  }
+
   try {
     const { error } = await supabase.from("user_stories").delete().eq("id", id);
 
     if (error) {
-      console.error("[Supabase] Error deleting story:", error);
+      console.warn("[Supabase] Error deleting story:", error.message);
       return { isSupabase: true, error: error.message };
     }
 
     return { isSupabase: true };
   } catch (err: any) {
-    console.error("[Supabase] Error deleting story:", err);
+    console.warn("[Supabase] Error deleting story:", err);
     return { isSupabase: true, error: err.message };
   }
 }
@@ -249,7 +257,7 @@ export async function clearAllStoriesFromSupabase(
 
   try {
     let query = supabase.from("user_stories").delete();
-    if (userId) {
+    if (userId && isValidUuid(userId)) {
       query = query.eq("user_id", userId);
     } else {
       query = query.neq("id", "00000000-0000-0000-0000-000000000000"); // Delete all
@@ -257,7 +265,7 @@ export async function clearAllStoriesFromSupabase(
 
     const { error } = await query;
     if (error) {
-      console.error("[Supabase] Error clearing stories:", error);
+      console.warn("[Supabase] Error clearing stories:", error.message);
       return { isSupabase: true, error: error.message };
     }
 
@@ -279,13 +287,17 @@ export async function syncUserProfileWithSupabase(
   }
 
   try {
-    const payload = {
+    const payload: any = {
       email: profile.email,
       name: profile.name,
       role: profile.role,
       avatar_color: profile.avatarColor || "from-indigo-500 to-indigo-700",
       updated_at: new Date().toISOString(),
     };
+
+    if (profile.id && isValidUuid(profile.id)) {
+      payload.id = profile.id;
+    }
 
     const { data, error } = await supabase
       .from("profiles")
@@ -294,7 +306,7 @@ export async function syncUserProfileWithSupabase(
       .single();
 
     if (error) {
-      console.error("[Supabase] Error syncing profile:", error);
+      console.warn("[Supabase] Error syncing profile:", error.message);
       return { profile, isSupabase: true, error: error.message };
     }
 
@@ -308,7 +320,7 @@ export async function syncUserProfileWithSupabase(
 
     return { profile: syncedProfile, isSupabase: true };
   } catch (err: any) {
-    console.error("[Supabase] Error in syncUserProfileWithSupabase:", err);
+    console.warn("[Supabase] Error in syncUserProfileWithSupabase:", err);
     return { profile, isSupabase: true, error: err.message };
   }
 }
@@ -333,7 +345,7 @@ export async function fetchAllProfilesFromSupabase(): Promise<{
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error("[Supabase] Error fetching profiles:", error);
+      console.warn("[Supabase] Error fetching profiles:", error.message);
       return { profiles: [], isSupabase: true, error: error.message };
     }
 
@@ -347,7 +359,7 @@ export async function fetchAllProfilesFromSupabase(): Promise<{
 
     return { profiles, isSupabase: true };
   } catch (err: any) {
-    console.error("[Supabase] Error fetching profiles:", err);
+    console.warn("[Supabase] Error fetching profiles:", err);
     return { profiles: [], isSupabase: true, error: err.message || "Erro desconhecido" };
   }
 }
@@ -371,14 +383,78 @@ export async function updateUserRoleInSupabase(
       .eq("email", email);
 
     if (error) {
-      console.error("[Supabase] Error updating user role:", error);
+      console.warn("[Supabase] Error updating user role:", error.message);
       return { isSupabase: true, error: error.message };
     }
 
     return { isSupabase: true };
   } catch (err: any) {
-    console.error("[Supabase] Error updating user role:", err);
+    console.warn("[Supabase] Error updating user role:", err);
     return { isSupabase: true, error: err.message };
+  }
+}
+
+/**
+ * Save or update a full user profile in Supabase
+ */
+export async function saveUserProfileToSupabase(
+  profile: UserProfile
+): Promise<{ isSupabase: boolean; error?: string }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return { isSupabase: false };
+  }
+
+  try {
+    const payload: any = {
+      email: profile.email,
+      name: profile.name,
+      role: profile.role,
+      avatar_color: profile.avatarColor || "from-indigo-500 to-indigo-700",
+      updated_at: new Date().toISOString(),
+    };
+
+    if (profile.id && isValidUuid(profile.id)) {
+      payload.id = profile.id;
+    }
+
+    const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "email" });
+
+    if (error) {
+      console.warn("[Supabase] Error saving user profile:", error.message);
+      return { isSupabase: true, error: error.message };
+    }
+
+    return { isSupabase: true };
+  } catch (err: any) {
+    console.warn("[Supabase] Error saving user profile:", err);
+    return { isSupabase: true, error: err.message || "Erro de conexão com Supabase" };
+  }
+}
+
+/**
+ * Delete a user profile from Supabase
+ */
+export async function deleteUserProfileFromSupabase(
+  email: string
+): Promise<{ isSupabase: boolean; error?: string }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return { isSupabase: false };
+  }
+
+  try {
+    const { error } = await supabase.from("profiles").delete().eq("email", email);
+
+    if (error) {
+      console.warn("[Supabase] Error deleting user profile:", error.message);
+      return { isSupabase: true, error: error.message };
+    }
+
+    return { isSupabase: true };
+  } catch (err: any) {
+    console.warn("[Supabase] Error deleting user profile:", err);
+    return { isSupabase: true, error: err.message || "Erro ao excluir perfil" };
   }
 }
 
