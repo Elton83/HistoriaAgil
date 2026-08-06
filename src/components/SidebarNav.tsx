@@ -11,9 +11,12 @@ import {
   X,
   PlusCircle,
   BarChart3,
+  RefreshCw,
+  Database,
 } from "lucide-react";
 import { UserProfile } from "./AuthModal";
 import { EBLogo } from "./EBLogo";
+import { isSupabaseConfigured } from "../lib/supabase";
 
 interface SidebarNavProps {
   activeTab: "generator" | "kanban" | "reports" | "audit" | "guide" | "admin";
@@ -24,6 +27,9 @@ interface SidebarNavProps {
   onLogout: () => void;
   onResetSystem?: () => void;
   onCreateNewStory?: () => void;
+  onSyncDatabase?: () => Promise<void>;
+  isSyncingDatabase?: boolean;
+  onOpenSupabaseModal?: () => void;
 }
 
 export const SidebarNav: React.FC<SidebarNavProps> = ({
@@ -35,9 +41,13 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
   onLogout,
   onResetSystem,
   onCreateNewStory,
+  onSyncDatabase,
+  isSyncingDatabase,
+  onOpenSupabaseModal,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const isDbConfigured = isSupabaseConfigured();
 
   const isAdmin =
     currentUser?.role.toLowerCase().includes("admin") ||
@@ -194,6 +204,39 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
 
         {/* Bottom Section: User Profile & Actions */}
         <div className="p-3 border-t border-slate-800/80 space-y-2">
+          {onOpenSupabaseModal && (
+            <button
+              onClick={onOpenSupabaseModal}
+              className={`w-full py-2 border font-semibold text-xs rounded-xl transition flex items-center justify-center space-x-2 cursor-pointer ${
+                isDbConfigured
+                  ? "bg-emerald-950/40 hover:bg-emerald-900/60 border-emerald-800/80 text-emerald-300"
+                  : "bg-amber-950/40 hover:bg-amber-900/60 border-amber-800/80 text-amber-300 animate-pulse"
+              } ${isCollapsed ? "px-2" : "px-3"}`}
+              title="Configurar Conexão Supabase PostgreSQL"
+            >
+              <Database className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              {!isCollapsed && (
+                <span>{isDbConfigured ? "Supabase OK" : "Conectar Supabase"}</span>
+              )}
+            </button>
+          )}
+
+          {onSyncDatabase && (
+            <button
+              onClick={onSyncDatabase}
+              disabled={isSyncingDatabase}
+              className={`w-full py-2 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 font-semibold text-xs rounded-xl transition flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-60 ${
+                isCollapsed ? "px-2" : "px-3"
+              }`}
+              title="Sincronizar Banco de Dados Supabase"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-indigo-400 shrink-0 ${isSyncingDatabase ? "animate-spin" : ""}`} />
+              {!isCollapsed && (
+                <span>{isSyncingDatabase ? "Sincronizando..." : "Sincronizar Banco"}</span>
+              )}
+            </button>
+          )}
+
           {currentUser && (
             <div
               className={`flex items-center justify-between bg-slate-950 border border-slate-800 rounded-xl p-2 ${

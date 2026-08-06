@@ -9,6 +9,7 @@ import { RefineModal } from "./components/RefineModal";
 import { InvestAuditModal } from "./components/InvestAuditModal";
 import { MethodologyGuideModal } from "./components/MethodologyGuideModal";
 import { AuthModal, UserProfile } from "./components/AuthModal";
+import { SupabaseModal } from "./components/SupabaseModal";
 import { UserStory, StoryStatus, InvestAudit } from "./types";
 import { INITIAL_SAMPLE_STORY } from "./data/presets";
 import { validateUserStory } from "./utils/storyValidator";
@@ -19,11 +20,15 @@ import {
   updateStoryStatusInSupabase,
   deleteStoryFromSupabase,
   clearAllStoriesFromSupabase,
+  syncUserProfileWithSupabase,
 } from "./services/supabaseService";
-import { CheckCircle2, AlertCircle, Loader2, Sparkles, PlusCircle } from "lucide-react";
+import { CheckCircle2, AlertCircle, Loader2, Sparkles, PlusCircle, RefreshCw, Database } from "lucide-react";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<"generator" | "kanban" | "reports" | "audit" | "guide" | "admin">("generator");
+
+  // Supabase Connection Modal State
+  const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
 
   // User Authentication State
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
@@ -391,6 +396,54 @@ export default function App() {
     }
   };
 
+  const [isSyncingDatabase, setIsSyncingDatabase] = useState(false);
+
+  // Full Database Synchronization
+  const handleSyncDatabase = async () => {
+    if (!currentUser) return;
+    setIsSyncingDatabase(true);
+    showToast("Sincronizando banco de dados Supabase PostgreSQL...", "info");
+
+    try {
+      // 1. Sync User Profile
+      await syncUserProfileWithSupabase(currentUser);
+
+      // 2. Upload local stories to Supabase if configured
+      let uploadCount = 0;
+      for (const st of stories) {
+        const res = await saveStoryToSupabase(st, currentUser.id);
+        if (!res.error) uploadCount++;
+      }
+
+      // 3. Fetch latest stories from Supabase
+      const result = await fetchStoriesFromSupabase();
+      if (result.isSupabase && !result.error) {
+        if (result.stories.length > 0) {
+          const storiesWithReports = result.stories.map((s) => ({
+            ...s,
+            validationReport: s.validationReport || validateUserStory(s),
+          }));
+          setStories(storiesWithReports);
+          if (!currentStory || currentStory.id === INITIAL_SAMPLE_STORY.id) {
+            setCurrentStory(storiesWithReports[0]);
+          }
+        }
+        showToast(
+          `Banco de dados sincronizado com sucesso! (${result.stories.length} histórias atualizadas)`,
+          "success"
+        );
+      } else if (result.error) {
+        showToast(`Sincronização concluída com avisos: ${result.error}`, "error");
+      } else {
+        showToast("Sincronização do banco concluída com sucesso!", "success");
+      }
+    } catch (err: any) {
+      showToast(`Erro na sincronização com o banco: ${err.message || "Erro de conexão"}`, "error");
+    } finally {
+      setIsSyncingDatabase(false);
+    }
+  };
+
   // Create empty new story in studio
   const handleCreateNewStory = () => {
     const blank: UserStory = {
@@ -442,6 +495,9 @@ export default function App() {
         onLogout={handleLogout}
         onResetSystem={handleResetSystem}
         onCreateNewStory={handleCreateNewStory}
+        onSyncDatabase={handleSyncDatabase}
+        isSyncingDatabase={isSyncingDatabase}
+        onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
       />
 
       {/* Main Content View Container */}
@@ -468,6 +524,25 @@ export default function App() {
           </div>
 
           <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setIsSupabaseModalOpen(true)}
+              className="px-3 py-1.5 bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-800/80 text-emerald-300 font-semibold text-xs rounded-xl shadow-md transition flex items-center space-x-2 cursor-pointer"
+              title="Configurar Conexão Supabase PostgreSQL"
+            >
+              <Database className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Conectar Supabase</span>
+            </button>
+
+            <button
+              onClick={handleSyncDatabase}
+              disabled={isSyncingDatabase}
+              className="px-3 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-200 font-semibold text-xs rounded-xl shadow-md transition flex items-center space-x-2 cursor-pointer disabled:opacity-60"
+              title="Sincronizar dados com o Supabase PostgreSQL"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-indigo-400 ${isSyncingDatabase ? "animate-spin" : ""}`} />
+              <span>{isSyncingDatabase ? "Sincronizando..." : "Sincronizar Banco"}</span>
+            </button>
+
             <button
               onClick={handleCreateNewStory}
               className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-md shadow-indigo-600/20 transition flex items-center space-x-1.5 cursor-pointer"
@@ -546,6 +621,9 @@ export default function App() {
               onUpdateCurrentUserRole={handleUpdateCurrentUserRole}
               onResetSystem={handleResetSystem}
               showToast={showToast}
+              onSyncDatabase={handleSyncDatabase}
+              isSyncingDatabase={isSyncingDatabase}
+              onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
             />
           )}
         </main>
@@ -560,6 +638,12 @@ export default function App() {
       </div>
 
       {/* Modals */}
+      <SupabaseModal
+        isOpen={isSupabaseModalOpen}
+        onClose={() => setIsSupabaseModalOpen(false)}
+        onStatusChange={handleSyncDatabase}
+      />
+
       <RefineModal
         isOpen={isRefineModalOpen}
         onClose={() => setIsRefineModalOpen(false)}

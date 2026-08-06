@@ -21,6 +21,7 @@ interface HeaderProps {
   onOpenAuthModal: () => void;
   onLogout: () => void;
   onResetSystem?: () => void;
+  onOpenSupabaseModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -30,6 +31,7 @@ export const Header: React.FC<HeaderProps> = ({
   currentUser,
   onLogout,
   onResetSystem,
+  onOpenSupabaseModal,
 }) => {
   const isDbConnected = isSupabaseConfigured();
 
@@ -56,21 +58,23 @@ export const Header: React.FC<HeaderProps> = ({
               </h1>
 
               {/* Supabase Status Pill */}
-              <span
+              <button
+                type="button"
+                onClick={onOpenSupabaseModal}
                 title={
                   isDbConnected
-                    ? "Conectado ao Supabase PostgreSQL"
-                    : "Modo Local (Configure VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY para ativar o banco)"
+                    ? "Conectado ao Supabase PostgreSQL (Clique para gerenciar)"
+                    : "Modo Local - Clique para conectar ao Supabase"
                 }
-                className={`hidden lg:flex items-center space-x-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                className={`hidden lg:flex items-center space-x-1 text-[10px] font-bold px-2.5 py-1 rounded-full border transition cursor-pointer hover:scale-105 ${
                   isDbConnected
-                    ? "bg-emerald-950/80 text-emerald-300 border-emerald-800/80"
-                    : "bg-amber-950/80 text-amber-300 border-amber-800/80"
+                    ? "bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border-emerald-800/80"
+                    : "bg-amber-950/80 hover:bg-amber-900 text-amber-300 border-amber-800/80"
                 }`}
               >
                 <Database className="w-3 h-3" />
-                <span>{isDbConnected ? "Supabase" : "Local"}</span>
-              </span>
+                <span>{isDbConnected ? "Supabase OK" : "Conectar Supabase"}</span>
+              </button>
             </div>
           </div>
 

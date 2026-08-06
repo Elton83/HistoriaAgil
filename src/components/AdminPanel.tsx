@@ -39,6 +39,9 @@ interface AdminPanelProps {
   onUpdateCurrentUserRole?: (newRole: string) => void;
   onResetSystem?: () => void;
   showToast?: (msg: string, type?: "success" | "error" | "info") => void;
+  onSyncDatabase?: () => Promise<void>;
+  isSyncingDatabase?: boolean;
+  onOpenSupabaseModal?: () => void;
 }
 
 const AVAILABLE_ROLES = [
@@ -109,6 +112,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onUpdateCurrentUserRole,
   onResetSystem,
   showToast,
+  onSyncDatabase,
+  isSyncingDatabase,
+  onOpenSupabaseModal,
 }) => {
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [isLoadingProfiles, setIsLoadingProfiles] = useState(false);
@@ -582,6 +588,29 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </h3>
 
             <div className="flex flex-wrap items-center gap-3 pt-2">
+              {onOpenSupabaseModal && (
+                <button
+                  onClick={onOpenSupabaseModal}
+                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-emerald-600/20 transition cursor-pointer flex items-center space-x-2"
+                >
+                  <Database className="w-4 h-4 text-emerald-200" />
+                  <span>Configurar Conexão Supabase</span>
+                </button>
+              )}
+
+              {onSyncDatabase && (
+                <button
+                  onClick={onSyncDatabase}
+                  disabled={isSyncingDatabase}
+                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 border border-indigo-500/50 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-600/20 transition cursor-pointer flex items-center space-x-2 disabled:opacity-60"
+                >
+                  <RefreshCw className={`w-4 h-4 text-indigo-200 ${isSyncingDatabase ? "animate-spin" : ""}`} />
+                  <span>
+                    {isSyncingDatabase ? "Sincronizando Banco..." : "Sincronizar Banco de Dados Agora"}
+                  </span>
+                </button>
+              )}
+
               {onResetSystem && (
                 <button
                   onClick={onResetSystem}

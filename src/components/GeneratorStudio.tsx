@@ -36,7 +36,7 @@ import {
 
 interface GeneratorStudioProps {
   currentStory: UserStory | null;
-  onStoryChange: (updatedStory: UserStory) => void;
+  onStoryChange: (updatedStory: UserStory | null) => void;
   onGenerateStory: (
     contextText: string,
     projectName: string,
@@ -79,6 +79,10 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
     setExtraInstructions("");
     setSelectedPresetId(null);
     setAttachedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+    onStoryChange(null);
   };
 
   // File Upload State
@@ -387,23 +391,18 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                 <p className="text-[11px] text-slate-400 font-medium">Insira as informações do seu requisito real</p>
               </div>
             </div>
-            <div className="flex items-center space-x-1.5">
-              <button
-                type="button"
-                onClick={handleClearForm}
-                className="text-[10px] bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer flex items-center space-x-1"
-                title="Limpar formulário para digitar dados reais do zero"
-              >
-                <Trash2 className="w-3 h-3 text-rose-400" />
-                <span>Limpar</span>
-              </button>
-              <span className="text-[10px] bg-indigo-950/90 text-indigo-300 border border-indigo-800/80 font-mono px-2 py-0.5 rounded-full font-bold">
-                v2.4
-              </span>
-            </div>
+            <button
+              type="button"
+              onClick={handleClearForm}
+              className="text-xs bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 px-3 py-1.5 rounded-xl font-bold transition cursor-pointer flex items-center space-x-1.5 shadow-sm active:scale-95"
+              title="Limpar formulário e reiniciar estúdio"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+              <span>Limpar Formulário</span>
+            </button>
           </div>
 
-          {/* Minimalist Preset Pills */}
+          {/* Compact Example Pills */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="text-[11px] font-semibold text-slate-300">
@@ -422,60 +421,46 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                 </button>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-1.5">
+            <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 scrollbar-none">
               {SAMPLE_PRESETS.map((p) => (
                 <button
                   key={p.id}
                   type="button"
                   onClick={() => handleLoadPreset(p)}
-                  className={`text-left px-3 py-2 rounded-xl border text-xs transition cursor-pointer flex flex-col justify-center ${
+                  className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-medium transition cursor-pointer shrink-0 whitespace-nowrap ${
                     selectedPresetId === p.id
-                      ? "bg-indigo-600/90 border-indigo-500 text-white font-semibold shadow-md"
-                      : "bg-slate-950/80 border-slate-800/90 text-slate-300 hover:border-slate-700 hover:bg-slate-900 hover:text-white"
+                      ? "bg-indigo-600 border-indigo-500 text-white shadow-sm font-semibold"
+                      : "bg-slate-950/80 border-slate-800 text-slate-300 hover:border-slate-700 hover:text-white"
                   }`}
+                  title={p.title}
                 >
-                  <span className="truncate">{p.title}</span>
-                  <span className="text-[9px] text-slate-400 font-normal truncate">{p.category}</span>
+                  {p.title}
                 </button>
               ))}
             </div>
           </div>
 
           <form onSubmit={handleGenerate} className="space-y-3.5">
-            {/* Metadata Fields: Projeto, Épico, Demandante in clean 3-col grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {/* Metadata Fields: Projeto e Demandante */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
-                <label className="block text-[11px] font-medium text-slate-300 mb-1">Projeto</label>
+                <label className="block text-[11px] font-medium text-slate-300 mb-1">Projeto / Sistema</label>
                 <input
                   type="text"
                   value={projectName}
                   onChange={(e) => setProjectName(e.target.value)}
                   placeholder="Ex: Banking Mobile"
-                  className="w-full bg-slate-950/90 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
+                  className="w-full bg-slate-950/90 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-slate-300 mb-1">
-                  Épico <span className="text-slate-500 font-normal">(Opcional)</span>
-                </label>
-                <input
-                  type="text"
-                  value={epicName}
-                  onChange={(e) => setEpicName(e.target.value)}
-                  placeholder="Ex: Pix & Limites"
-                  className="w-full bg-slate-950/90 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-slate-300 mb-1">
-                  Demandante
-                </label>
+                <label className="block text-[11px] font-medium text-slate-300 mb-1">Demandante / Solicitante</label>
                 <input
                   type="text"
                   value={requester}
                   onChange={(e) => setRequester(e.target.value)}
                   placeholder="Ex: Ana Paula (GPM)"
-                  className="w-full bg-slate-950/90 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
+                  className="w-full bg-slate-950/90 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
                 />
               </div>
             </div>
@@ -488,25 +473,13 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                   <span>Escopo Bruto do Requisito</span>
                 </label>
 
-                <div className="flex items-center space-x-2 text-[10px]">
-                  <button
-                    type="button"
-                    onClick={handlePasteFromClipboard}
-                    className="text-indigo-400 font-medium hover:underline flex items-center space-x-0.5 cursor-pointer"
-                  >
-                    <span>Colar</span>
-                  </button>
-                  {contextText && (
-                    <button
-                      type="button"
-                      onClick={handleClearContext}
-                      className="text-rose-400 font-medium hover:underline flex items-center space-x-0.5 cursor-pointer"
-                    >
-                      <X className="w-3 h-3" />
-                      <span>Limpar</span>
-                    </button>
-                  )}
-                </div>
+                <button
+                  type="button"
+                  onClick={handlePasteFromClipboard}
+                  className="text-[10px] text-indigo-400 font-medium hover:underline flex items-center space-x-0.5 cursor-pointer"
+                >
+                  <span>Colar</span>
+                </button>
               </div>
 
               {/* Text Area */}
@@ -516,7 +489,7 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                   setContextText(e.target.value);
                   setSelectedPresetId(null);
                 }}
-                rows={7}
+                rows={8}
                 placeholder="Cole aqui o escopo do requisito, ata de reunião, regras de negócio ou especificações brutas..."
                 className="w-full bg-slate-950/90 border border-slate-800 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-mono leading-relaxed resize-y transition"
               />
@@ -566,7 +539,7 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                 onDragLeave={() => setIsDragOver(false)}
                 onDrop={handleDropFile}
                 onClick={() => fileInputRef.current?.click()}
-                className={`border border-dashed rounded-xl p-2.5 text-center cursor-pointer transition flex items-center justify-center space-x-2 ${
+                className={`border border-dashed rounded-xl p-2 text-center cursor-pointer transition flex items-center justify-center space-x-2 ${
                   isDragOver
                     ? "border-indigo-400 bg-indigo-950/40"
                     : "border-slate-800 hover:border-slate-700 bg-slate-950/60 hover:bg-slate-950"
@@ -583,7 +556,7 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                       <Upload className="w-3.5 h-3.5" />
                     </div>
                     <span>
-                      <span className="font-semibold text-indigo-400">Clique para anexar</span> ou solte o arquivo aqui
+                      <span className="font-semibold text-indigo-400">Clique para anexar</span> ou solte arquivo aqui
                     </span>
                   </div>
                 )}
@@ -603,7 +576,10 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                   </div>
                   <button
                     type="button"
-                    onClick={() => setAttachedFile(null)}
+                    onClick={() => {
+                      setAttachedFile(null);
+                      if (fileInputRef.current) fileInputRef.current.value = "";
+                    }}
                     className="p-1 hover:bg-indigo-900/60 text-slate-400 hover:text-rose-400 rounded-lg transition shrink-0 cursor-pointer"
                     title="Remover anexo"
                   >
@@ -613,38 +589,14 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
               )}
             </div>
 
-            {/* Pre-generation Scope Quality Summary */}
-            <div className="bg-slate-950/80 border border-slate-800/90 rounded-xl p-2.5 flex items-center justify-between text-[11px]">
-              <div className="flex items-center space-x-2">
-                <ShieldCheck className="w-4 h-4 text-indigo-400 shrink-0" />
-                <span className="text-slate-300 font-medium">
-                  {isScopeLengthValid
-                    ? `Densidade OK (${scopeWordCount} palavras)`
-                    : "Aguardando texto do escopo"}
-                </span>
-              </div>
-              <span
-                className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
-                  isScopeLengthValid
-                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                    : "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                }`}
-              >
-                {isScopeLengthValid ? "Escopo Válido" : "Texto Curto"}
-              </span>
-            </div>
-
             {/* Extra Focus Instructions */}
             <div>
-              <label className="block text-[11px] font-medium text-slate-300 mb-1">
-                Foco Adicional de Análise <span className="text-slate-500 font-normal">(Opcional)</span>
-              </label>
               <input
                 type="text"
                 value={extraInstructions}
                 onChange={(e) => setExtraInstructions(e.target.value)}
-                placeholder="Ex: Dar atenção às normas do Banco Central ou expiração do token"
-                className="w-full bg-slate-950/90 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
+                placeholder="Foco Adicional (Opcional): ex. Dar atenção às normas Bacen"
+                className="w-full bg-slate-950/90 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
               />
             </div>
 
