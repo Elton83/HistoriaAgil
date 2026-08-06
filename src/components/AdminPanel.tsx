@@ -601,10 +601,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
 
           <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-            <h3 className="text-base font-bold text-white flex items-center space-x-2">
-              <Server className="w-5 h-5 text-indigo-400" />
-              <span>Ações de Manutenção e Reset</span>
-            </h3>
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center space-x-2">
+                <Database className="w-5 h-5 text-emerald-400" />
+                <span>Gestão e Sincronização do Supabase</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Gerencie a URL/API key do Supabase PostgreSQL, force a sincronização de dados ou realize manutenção de cache local.
+              </p>
+            </div>
 
             <div className="flex flex-wrap items-center gap-3 pt-2">
               {onOpenSupabaseModal && (

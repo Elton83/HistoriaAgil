@@ -525,25 +525,6 @@ export default function App() {
 
           <div className="flex items-center space-x-3">
             <button
-              onClick={() => setIsSupabaseModalOpen(true)}
-              className="px-3 py-1.5 bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-800/80 text-emerald-300 font-semibold text-xs rounded-xl shadow-md transition flex items-center space-x-2 cursor-pointer"
-              title="Configurar Conexão Supabase PostgreSQL"
-            >
-              <Database className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Conectar Supabase</span>
-            </button>
-
-            <button
-              onClick={handleSyncDatabase}
-              disabled={isSyncingDatabase}
-              className="px-3 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-200 font-semibold text-xs rounded-xl shadow-md transition flex items-center space-x-2 cursor-pointer disabled:opacity-60"
-              title="Sincronizar dados com o Supabase PostgreSQL"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 text-indigo-400 ${isSyncingDatabase ? "animate-spin" : ""}`} />
-              <span>{isSyncingDatabase ? "Sincronizando..." : "Sincronizar Banco"}</span>
-            </button>
-
-            <button
               onClick={handleCreateNewStory}
               className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-md shadow-indigo-600/20 transition flex items-center space-x-1.5 cursor-pointer"
             >

@@ -1,6 +1,5 @@
 import React, { useState, useRef } from "react";
-import { UserStory, ContextPreset } from "../types";
-import { SAMPLE_PRESETS } from "../data/presets";
+import { UserStory } from "../types";
 import { parseUploadedFile, parseRecordedVideoBlob, ParsedFileInfo } from "../utils/fileReader";
 import { validateUserStory } from "../utils/storyValidator";
 import { generateStoryPDF } from "../utils/pdfExporter";
@@ -72,7 +71,6 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
   const [epicName, setEpicName] = useState("");
   const [requester, setRequester] = useState("");
   const [extraInstructions, setExtraInstructions] = useState("");
-  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
 
   // Clear form completely for real data entry
   const handleClearForm = () => {
@@ -81,7 +79,6 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
     setEpicName("");
     setRequester("");
     setExtraInstructions("");
-    setSelectedPresetId(null);
     setAttachedFile(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -128,14 +125,6 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
     }
   };
 
-  // Load a preset
-  const handleLoadPreset = (preset: ContextPreset) => {
-    setSelectedPresetId(preset.id);
-    setContextText(preset.contextText);
-    setProjectName(preset.projectName);
-    setEpicName(preset.epicName);
-  };
-
   // Process File Selection
   const handleFileChange = async (file: File) => {
     if (!file) return;
@@ -171,7 +160,6 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
   const handleClearContext = () => {
     setContextText("");
     setAttachedFile(null);
-    setSelectedPresetId(null);
   };
 
   const handlePasteFromClipboard = async () => {
@@ -428,67 +416,17 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
             </button>
           </div>
 
-          {/* Compact Example Pills */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-[11px] font-semibold text-slate-300">
-                Exemplos Rápido (1-Clique):
-              </label>
-              {selectedPresetId && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedPresetId(null);
-                    setContextText("");
-                  }}
-                  className="text-[10px] text-indigo-400 hover:text-indigo-300 hover:underline font-medium cursor-pointer"
-                >
-                  Limpar seleção
-                </button>
-              )}
-            </div>
-            <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 scrollbar-none">
-              {SAMPLE_PRESETS.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => handleLoadPreset(p)}
-                  className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-medium transition cursor-pointer shrink-0 whitespace-nowrap ${
-                    selectedPresetId === p.id
-                      ? "bg-indigo-600 border-indigo-500 text-white shadow-sm font-semibold"
-                      : "bg-slate-950/80 border-slate-800 text-slate-300 hover:border-slate-700 hover:text-white"
-                  }`}
-                  title={p.title}
-                >
-                  {p.title}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <form onSubmit={handleGenerate} className="space-y-3.5">
-            {/* Metadata Fields: Projeto e Demandante */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <div>
-                <label className="block text-[11px] font-medium text-slate-300 mb-1">Projeto / Sistema</label>
-                <input
-                  type="text"
-                  value={projectName}
-                  onChange={(e) => setProjectName(e.target.value)}
-                  placeholder="Ex: Banking Mobile"
-                  className="w-full bg-slate-950/90 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-slate-300 mb-1">Demandante / Solicitante</label>
-                <input
-                  type="text"
-                  value={requester}
-                  onChange={(e) => setRequester(e.target.value)}
-                  placeholder="Ex: Ana Paula (GPM)"
-                  className="w-full bg-slate-950/90 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
-                />
-              </div>
+            {/* Metadata Field: Nome do Projeto */}
+            <div>
+              <label className="block text-[11px] font-medium text-slate-300 mb-1">Nome do Projeto</label>
+              <input
+                type="text"
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                placeholder="Ex: Banking Mobile"
+                className="w-full bg-slate-950/90 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
+              />
             </div>
 
             {/* Scope Text Box Header & Actions */}
@@ -511,10 +449,7 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
               {/* Text Area */}
               <textarea
                 value={contextText}
-                onChange={(e) => {
-                  setContextText(e.target.value);
-                  setSelectedPresetId(null);
-                }}
+                onChange={(e) => setContextText(e.target.value)}
                 rows={8}
                 placeholder="Cole aqui o escopo do requisito, ata de reunião, regras de negócio ou especificações brutas..."
                 className="w-full bg-slate-950/90 border border-slate-800 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-mono leading-relaxed resize-y transition"
@@ -864,31 +799,6 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                   />
                 </div>
 
-                {/* Demandante / Solicitante Banner Card */}
-                <div className="bg-indigo-50/80 border border-indigo-200 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                  <div className="flex items-center space-x-2.5">
-                    <div className="p-2 bg-indigo-600 text-white rounded-lg shadow-sm shrink-0">
-                      <UserCheck className="w-4 h-4" />
-                    </div>
-                    <div className="flex-1">
-                      <label className="block text-[10px] font-bold uppercase tracking-wider text-indigo-900">
-                        Demandante / Solicitante da História
-                      </label>
-                      <input
-                        type="text"
-                        value={currentStory.requester || ""}
-                        onChange={(e) =>
-                          updateStoryAndValidate({ ...currentStory, requester: e.target.value })
-                        }
-                        placeholder="Ex: Ana Paula Costa - GPM de Pagamentos"
-                        className="w-full sm:w-80 bg-white border border-indigo-200 rounded-lg px-2.5 py-1 text-xs text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm mt-0.5"
-                      />
-                    </div>
-                  </div>
-                  <span className="inline-self-start sm:self-auto text-[10px] font-bold text-indigo-700 bg-white border border-indigo-200 px-2.5 py-1 rounded-lg">
-                    Requisito Homologado
-                  </span>
-                </div>
 
                 {/* User Story Card (Como, Quero, Para) */}
                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3 shadow-sm">
