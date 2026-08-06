@@ -77,6 +77,7 @@ ALTER TABLE public.user_stories ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public Profiles Select" ON public.profiles FOR SELECT USING (true);
 CREATE POLICY "Public Profiles Insert" ON public.profiles FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public Profiles Update" ON public.profiles FOR UPDATE USING (true);
+CREATE POLICY "Public Profiles Delete" ON public.profiles FOR DELETE USING (true);
 
 CREATE POLICY "Public Stories Select" ON public.user_stories FOR SELECT USING (true);
 CREATE POLICY "Public Stories Insert" ON public.user_stories FOR INSERT WITH CHECK (true);

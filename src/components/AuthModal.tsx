@@ -15,7 +15,11 @@ import {
   ShieldAlert,
   Loader2,
 } from "lucide-react";
-import { syncUserProfileWithSupabase } from "../services/supabaseService";
+import {
+  syncUserProfileWithSupabase,
+  fetchProfileByEmailFromSupabase,
+} from "../services/supabaseService";
+import { getLocalProfiles, upsertLocalProfile } from "../utils/profileStorage";
 
 export interface UserProfile {
   id: string;
@@ -87,7 +91,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     e.preventDefault();
     setErrorMessage(null);
 
-    if (!email.trim() || !password.trim()) {
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanEmail || !password.trim()) {
       setErrorMessage("Por favor, preencha o e-mail/usuário e a senha.");
       return;
     }
@@ -99,21 +105,42 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     setIsLoading(true);
 
-    // Extract name from email or use email prefix
-    const derivedName = email.split("@")[0].replace(".", " ");
-    const formattedName =
-      derivedName.charAt(0).toUpperCase() + derivedName.slice(1);
+    // 1. First check if profile exists in Supabase
+    const dbCheck = await fetchProfileByEmailFromSupabase(cleanEmail);
+    let loggedUser: UserProfile | null = dbCheck.profile;
 
-    const rawUser: UserProfile = {
-      id: `user-${Date.now()}`,
-      name: formattedName || "Usuário Ágil",
-      email: email,
-      role: "Product Owner / Analista",
-      avatarColor: "from-indigo-500 to-indigo-700",
-    };
+    // 2. If not in Supabase, check local storage
+    if (!loggedUser) {
+      const localProfiles = getLocalProfiles();
+      const foundLocal = localProfiles.find(
+        (p) => p.email.trim().toLowerCase() === cleanEmail
+      );
+      if (foundLocal) {
+        loggedUser = foundLocal;
+      }
+    }
 
-    const result = await syncUserProfileWithSupabase(rawUser);
-    const loggedUser = result.profile;
+    // 3. If still not found, construct new default profile
+    if (!loggedUser) {
+      const derivedName = cleanEmail.split("@")[0].replace(".", " ");
+      const formattedName =
+        derivedName.charAt(0).toUpperCase() + derivedName.slice(1);
+
+      loggedUser = {
+        id: `user-${Date.now()}`,
+        name: formattedName || "Usuário Ágil",
+        email: cleanEmail,
+        role: "Product Owner",
+        avatarColor: "from-indigo-500 to-indigo-700",
+      };
+    }
+
+    // 4. Sync with Supabase & save locally
+    const result = await syncUserProfileWithSupabase(loggedUser);
+    if (result.profile) {
+      loggedUser = result.profile;
+    }
+    upsertLocalProfile(loggedUser);
 
     setIsLoading(false);
     setSuccessMessage(
@@ -123,7 +150,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     );
 
     setTimeout(() => {
-      onLogin(loggedUser);
+      onLogin(loggedUser!);
       setSuccessMessage(null);
       onClose();
     }, 600);
@@ -133,7 +160,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     e.preventDefault();
     setErrorMessage(null);
 
-    if (!name.trim() || !email.trim() || !password.trim()) {
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!name.trim() || !cleanEmail || !password.trim()) {
       setErrorMessage("Todos os campos obrigatórios devem ser preenchidos.");
       return;
     }
@@ -152,14 +181,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     const rawUser: UserProfile = {
       id: `user-${Date.now()}`,
-      name: name,
-      email: email,
+      name: name.trim(),
+      email: cleanEmail,
       role: role,
       avatarColor: "from-indigo-500 to-purple-600",
     };
 
+    upsertLocalProfile(rawUser);
+
     const result = await syncUserProfileWithSupabase(rawUser);
-    const newUser = result.profile;
+    const newUser = result.profile || rawUser;
+    upsertLocalProfile(newUser);
 
     setIsLoading(false);
     setSuccessMessage(
@@ -176,17 +208,29 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   };
 
   const handleSelectDemoAccount = async (acc: UserProfile) => {
+    const cleanEmail = acc.email.trim().toLowerCase();
     setEmail(acc.email);
     setPassword("••••••••");
     setIsLoading(true);
-    setSuccessMessage(`Sincronizando conta demo (${acc.name}) no Supabase...`);
 
-    const result = await syncUserProfileWithSupabase(acc);
+    // Check if demo user was modified in DB or local
+    const dbCheck = await fetchProfileByEmailFromSupabase(cleanEmail);
+    const localProfiles = getLocalProfiles();
+    const foundLocal = localProfiles.find(
+      (p) => p.email.trim().toLowerCase() === cleanEmail
+    );
+
+    const targetAcc: UserProfile = dbCheck.profile || foundLocal || acc;
+
+    upsertLocalProfile(targetAcc);
+    const result = await syncUserProfileWithSupabase(targetAcc);
+    const loggedUser = result.profile || targetAcc;
+    upsertLocalProfile(loggedUser);
+
     setIsLoading(false);
-
-    setSuccessMessage(`Acessando como ${result.profile.name}...`);
+    setSuccessMessage(`Acessando como ${loggedUser.name}...`);
     setTimeout(() => {
-      onLogin(result.profile);
+      onLogin(loggedUser);
       setSuccessMessage(null);
       onClose();
     }, 400);

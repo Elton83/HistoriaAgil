@@ -17,6 +17,7 @@ import {
   syncUserProfileWithSupabase,
   fetchProfileByEmailFromSupabase,
 } from "../services/supabaseService";
+import { getLocalProfiles, upsertLocalProfile } from "../utils/profileStorage";
 import { EBLogo } from "./EBLogo";
 
 interface LoginScreenProps {
@@ -60,24 +61,37 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
     // Look up existing user profile in Supabase by email
     const existing = await fetchProfileByEmailFromSupabase(cleanEmail);
 
-    let loggedUser: UserProfile;
+    let loggedUser: UserProfile | null = null;
 
     if (existing.profile) {
       loggedUser = existing.profile;
-    } else if (existing.isSupabase) {
-      // User profile not found in Supabase
+    } else {
+      // Check local profiles
+      const localProfiles = getLocalProfiles();
+      const foundLocal = localProfiles.find(
+        (p) => p.email.trim().toLowerCase() === cleanEmail
+      );
+      if (foundLocal) {
+        loggedUser = foundLocal;
+      }
+    }
+
+    if (!loggedUser && existing.isSupabase) {
+      // User profile not found in Supabase or local storage
       setIsLoading(false);
       setErrorMessage(
         "Conta não encontrada para este e-mail. Por favor, crie sua conta na aba 'Criar Conta'."
       );
       return;
-    } else {
+    }
+
+    if (!loggedUser) {
       // Fallback if Supabase client is offline/unconfigured
       const derivedName = cleanEmail.split("@")[0].replace(".", " ");
       const formattedName =
         derivedName.charAt(0).toUpperCase() + derivedName.slice(1);
 
-      const rawUser: UserProfile = {
+      loggedUser = {
         id: `user-${Date.now()}`,
         name: formattedName || "Usuário Ágil",
         email: cleanEmail,
@@ -85,15 +99,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
         avatarColor: "from-indigo-500 to-indigo-700",
       };
 
-      const result = await syncUserProfileWithSupabase(rawUser);
-      loggedUser = result.profile;
+      const result = await syncUserProfileWithSupabase(loggedUser);
+      if (result.profile) loggedUser = result.profile;
     }
+
+    upsertLocalProfile(loggedUser);
 
     setIsLoading(false);
     setSuccessMessage(`Autenticado com sucesso! Entrando no sistema...`);
 
     setTimeout(() => {
-      onLogin(loggedUser);
+      onLogin(loggedUser!);
     }, 500);
   };
 
@@ -101,7 +117,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
     e.preventDefault();
     setErrorMessage(null);
 
-    if (!name.trim() || !email.trim() || !password.trim()) {
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!name.trim() || !cleanEmail || !password.trim()) {
       setErrorMessage("Por favor, preencha todos os campos obrigatórios.");
       return;
     }
@@ -120,14 +138,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
 
     const rawUser: UserProfile = {
       id: `user-${Date.now()}`,
-      name: name,
-      email: email,
+      name: name.trim(),
+      email: cleanEmail,
       role: role,
       avatarColor: "from-indigo-500 to-purple-600",
     };
 
+    upsertLocalProfile(rawUser);
+
     const result = await syncUserProfileWithSupabase(rawUser);
-    const newUser = result.profile;
+    const newUser = result.profile || rawUser;
+    upsertLocalProfile(newUser);
 
     setIsLoading(false);
     setSuccessMessage(

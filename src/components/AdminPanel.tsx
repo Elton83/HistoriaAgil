@@ -32,6 +32,12 @@ import {
   deleteUserProfileFromSupabase,
 } from "../services/supabaseService";
 import { isSupabaseConfigured } from "../lib/supabase";
+import {
+  getLocalProfiles,
+  upsertLocalProfile,
+  deleteLocalProfile,
+  mergeProfiles,
+} from "../utils/profileStorage";
 
 interface AdminPanelProps {
   currentUser: UserProfile | null;
@@ -139,36 +145,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const loadProfiles = async () => {
     setIsLoadingProfiles(true);
+    const local = getLocalProfiles();
     const res = await fetchAllProfilesFromSupabase();
     setIsLoadingProfiles(false);
 
     if (res.isSupabase && res.profiles.length > 0) {
-      setProfiles(res.profiles);
+      const merged = mergeProfiles(res.profiles, local);
+      setProfiles(merged);
     } else {
-      // Fallback demo profiles if DB empty or local
-      setProfiles([
-        {
-          id: currentUser?.id || "u-1",
-          name: currentUser?.name || "Elton Rabelo",
-          email: currentUser?.email || "elton.rabelo@agile.com",
-          role: currentUser?.role || "Administrador / GPM",
-          avatarColor: currentUser?.avatarColor || "from-indigo-500 to-indigo-700",
-        },
-        {
-          id: "u-2",
-          name: "Ana Paula Costa",
-          email: "ana.costa@agile.com",
-          role: "Scrum Master & Agile Coach",
-          avatarColor: "from-emerald-500 to-teal-700",
-        },
-        {
-          id: "u-3",
-          name: "Carlos Eduardo",
-          email: "carlos.dev@agile.com",
-          role: "Tech Lead / Arquiteto",
-          avatarColor: "from-amber-500 to-orange-700",
-        },
-      ]);
+      setProfiles(local);
     }
   };
 
@@ -178,22 +163,33 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleRoleChange = async (targetEmail: string, newRole: string) => {
     setUpdatingEmail(targetEmail);
-    const res = await updateUserRoleInSupabase(targetEmail, newRole);
+    const cleanEmail = targetEmail.trim().toLowerCase();
+
+    // 1. Update local storage
+    const targetProf = profiles.find((p) => p.email.trim().toLowerCase() === cleanEmail);
+    if (targetProf) {
+      upsertLocalProfile({ ...targetProf, role: newRole });
+    }
+
+    // 2. Update state UI
+    setProfiles((prev) =>
+      prev.map((p) => (p.email.trim().toLowerCase() === cleanEmail ? { ...p, role: newRole } : p))
+    );
+
+    // 3. Update Supabase
+    const res = await updateUserRoleInSupabase(cleanEmail, newRole);
     setUpdatingEmail(null);
 
     if (res.error) {
-      if (showToast) showToast(`Erro ao atualizar no banco: ${res.error}`, "error");
+      if (showToast)
+        showToast(`Papel atualizado localmente (aviso Supabase: ${res.error})`, "info");
     } else {
       if (showToast) showToast(`Papel de ${targetEmail} alterado para ${newRole}!`, "success");
+    }
 
-      setProfiles((prev) =>
-        prev.map((p) => (p.email === targetEmail ? { ...p, role: newRole } : p))
-      );
-
-      // If updating logged user's own role
-      if (targetEmail === currentUser?.email && onUpdateCurrentUserRole) {
-        onUpdateCurrentUserRole(newRole);
-      }
+    // If updating logged user's own role
+    if (cleanEmail === currentUser?.email?.toLowerCase() && onUpdateCurrentUserRole) {
+      onUpdateCurrentUserRole(newRole);
     }
   };
 
@@ -232,42 +228,65 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       avatarColor: formAvatarColor,
     };
 
+    // 1. Persist locally first so user is never lost
+    upsertLocalProfile(targetUser);
+
+    // 2. Sync to Supabase
     const res = await saveUserProfileToSupabase(targetUser);
     setIsSavingUser(false);
 
-    if (res.error) {
-      if (showToast) showToast(`Erro ao salvar no Supabase: ${res.error}`, "error");
+    // 3. Update UI state
+    if (editingUser) {
+      setProfiles((prev) =>
+        prev.map((p) =>
+          p.id === targetUser.id || p.email.toLowerCase() === targetUser.email
+            ? targetUser
+            : p
+        )
+      );
     } else {
-      if (editingUser) {
-        setProfiles((prev) =>
-          prev.map((p) => (p.id === targetUser.id || p.email === targetUser.email ? targetUser : p))
-        );
-        if (showToast) showToast(`Usuário ${targetUser.name} atualizado com sucesso!`, "success");
-      } else {
-        setProfiles((prev) => [targetUser, ...prev.filter((p) => p.email !== targetUser.email)]);
-        if (showToast) showToast(`Usuário ${targetUser.name} criado com sucesso!`, "success");
-      }
-
-      if (targetUser.email === currentUser?.email && onUpdateCurrentUserRole) {
-        onUpdateCurrentUserRole(targetUser.role);
-      }
-
-      setIsUserModalOpen(false);
+      setProfiles((prev) => [
+        targetUser,
+        ...prev.filter((p) => p.email.toLowerCase() !== targetUser.email),
+      ]);
     }
+
+    if (res.error) {
+      if (showToast)
+        showToast(
+          `Usuário ${targetUser.name} salvo localmente! (Aviso Supabase: ${res.error})`,
+          "info"
+        );
+    } else {
+      if (showToast)
+        showToast(
+          `Usuário ${targetUser.name} ${editingUser ? "atualizado" : "criado"} com sucesso no banco!`,
+          "success"
+        );
+    }
+
+    if (targetUser.email === currentUser?.email?.toLowerCase() && onUpdateCurrentUserRole) {
+      onUpdateCurrentUserRole(targetUser.role);
+    }
+
+    setIsUserModalOpen(false);
   };
 
   const handleDeleteUser = async (user: UserProfile) => {
     if (confirm(`Tem certeza que deseja excluir o acesso de "${user.name}" (${user.email})?`)) {
       setUpdatingEmail(user.email);
+
+      // 1. Delete locally
+      deleteLocalProfile(user.email);
+
+      // 2. Delete from Supabase
       const res = await deleteUserProfileFromSupabase(user.email);
       setUpdatingEmail(null);
 
-      if (res.error) {
-        if (showToast) showToast(`Erro ao excluir no banco: ${res.error}`, "error");
-      } else {
-        setProfiles((prev) => prev.filter((p) => p.email !== user.email));
-        if (showToast) showToast(`Acesso de ${user.name} removido com sucesso.`, "info");
-      }
+      // 3. Update state
+      setProfiles((prev) => prev.filter((p) => p.email.toLowerCase() !== user.email.toLowerCase()));
+
+      if (showToast) showToast(`Acesso de ${user.name} removido com sucesso.`, "info");
     }
   };
 

@@ -1,10 +1,11 @@
 import React, { useState, useRef } from "react";
 import { UserStory, ContextPreset } from "../types";
 import { SAMPLE_PRESETS } from "../data/presets";
-import { parseUploadedFile, ParsedFileInfo } from "../utils/fileReader";
+import { parseUploadedFile, parseRecordedVideoBlob, ParsedFileInfo } from "../utils/fileReader";
 import { validateUserStory } from "../utils/storyValidator";
 import { generateStoryPDF } from "../utils/pdfExporter";
 import { ValidationTestsCard } from "./ValidationTestsCard";
+import { VideoRecorderModal } from "./VideoRecorderModal";
 import {
   Sparkles,
   RefreshCw,
@@ -31,7 +32,10 @@ import {
   Search,
   CheckCircle,
   FileDown,
-  UserCheck
+  UserCheck,
+  Video,
+  FolderArchive,
+  Camera,
 } from "lucide-react";
 
 interface GeneratorStudioProps {
@@ -89,6 +93,7 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
   const [attachedFile, setAttachedFile] = useState<ParsedFileInfo | null>(null);
   const [isReadingFile, setIsReadingFile] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // UI state
@@ -101,6 +106,27 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
     passed: number;
     total: number;
   } | null>(null);
+
+  // Process Recorded Video
+  const handleSaveRecordedVideo = async (blob: Blob, customFileName: string) => {
+    setIsReadingFile(true);
+    try {
+      const parsed = await parseRecordedVideoBlob(blob, customFileName);
+      setAttachedFile(parsed);
+      if (parsed.textContent) {
+        setContextText((prev) =>
+          prev.trim()
+            ? `${prev}\n\n--- Gravação de Vídeo Anexada ---\n${parsed.textContent}`
+            : parsed.textContent || ""
+        );
+      }
+    } catch (err) {
+      console.error("Erro ao salvar gravação de vídeo:", err);
+      alert("Erro ao processar a gravação de vídeo.");
+    } finally {
+      setIsReadingFile(false);
+    }
+  };
 
   // Load a preset
   const handleLoadPreset = (preset: ContextPreset) => {
@@ -512,16 +538,27 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
               </div>
             </div>
 
-            {/* File Upload / Drag & Drop Area */}
-            <div className="space-y-1.5">
-              <label className="block text-[11px] font-semibold text-slate-300">
-                Anexo de Apoio <span className="text-slate-500 font-normal">(Doc, PDF, Imagem, TXT, JSON)</span>:
-              </label>
+            {/* File Upload / Drag & Drop & Video Recording Area */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-[11px] font-semibold text-slate-300">
+                  Anexar Arquivo ou Gravar Vídeo:
+                </label>
+                <div className="flex items-center space-x-1.5 text-[10px]">
+                  <span className="text-emerald-400 font-medium">Planilhas</span>
+                  <span className="text-slate-600">•</span>
+                  <span className="text-amber-400 font-medium">ZIP</span>
+                  <span className="text-slate-600">•</span>
+                  <span className="text-rose-400 font-medium">Vídeos</span>
+                  <span className="text-slate-600">•</span>
+                  <span className="text-indigo-400 font-medium">Docs/Imagens</span>
+                </div>
+              </div>
 
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".txt,.md,.json,.csv,.doc,.docx,.pdf,image/png,image/jpeg,image/webp"
+                accept=".txt,.md,.json,.csv,.xlsx,.xls,.ods,.zip,.rar,.mp4,.webm,.mov,.avi,.mkv,.doc,.docx,.pdf,image/*,video/*"
                 onChange={(e) => {
                   if (e.target.files?.[0]) {
                     handleFileChange(e.target.files[0]);
@@ -530,61 +567,97 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                 className="hidden"
               />
 
-              {/* Dropzone Box */}
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setIsDragOver(true);
-                }}
-                onDragLeave={() => setIsDragOver(false)}
-                onDrop={handleDropFile}
-                onClick={() => fileInputRef.current?.click()}
-                className={`border border-dashed rounded-xl p-2 text-center cursor-pointer transition flex items-center justify-center space-x-2 ${
-                  isDragOver
-                    ? "border-indigo-400 bg-indigo-950/40"
-                    : "border-slate-800 hover:border-slate-700 bg-slate-950/60 hover:bg-slate-950"
-                }`}
-              >
-                {isReadingFile ? (
-                  <div className="flex items-center space-x-2 text-indigo-400 text-xs py-0.5 font-medium">
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Extraindo conteúdo do arquivo...</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center space-x-2 text-xs text-slate-300">
-                    <div className="p-1 bg-indigo-500/10 text-indigo-400 rounded-md border border-indigo-500/20">
-                      <Upload className="w-3.5 h-3.5" />
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-1.5">
+                {/* Main Drag & Drop Zone (3 cols) */}
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragOver(true);
+                  }}
+                  onDragLeave={() => setIsDragOver(false)}
+                  onDrop={handleDropFile}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`sm:col-span-3 border border-dashed rounded-xl p-2 text-center cursor-pointer transition flex items-center justify-center space-x-2 ${
+                    isDragOver
+                      ? "border-indigo-400 bg-indigo-950/40"
+                      : "border-slate-800 hover:border-slate-700 bg-slate-950/60 hover:bg-slate-950"
+                  }`}
+                >
+                  {isReadingFile ? (
+                    <div className="flex items-center space-x-2 text-indigo-400 text-xs py-0.5 font-medium">
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Processando arquivo...</span>
                     </div>
-                    <span>
-                      <span className="font-semibold text-indigo-400">Clique para anexar</span> ou solte arquivo aqui
-                    </span>
-                  </div>
-                )}
+                  ) : (
+                    <div className="flex items-center space-x-2 text-[11px] text-slate-300">
+                      <div className="p-1 bg-indigo-500/10 text-indigo-400 rounded-md border border-indigo-500/20">
+                        <Upload className="w-3.5 h-3.5" />
+                      </div>
+                      <span>
+                        <span className="font-semibold text-indigo-400">Anexar arquivo</span> (Excel, CSV, ZIP, Doc, Imagem)
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Video Recording Trigger Button (1 col) */}
+                <button
+                  type="button"
+                  onClick={() => setIsVideoModalOpen(true)}
+                  className="sm:col-span-1 border border-rose-500/30 bg-rose-950/30 hover:bg-rose-900/40 text-rose-300 rounded-xl p-2 text-[11px] font-bold transition flex items-center justify-center space-x-1.5 cursor-pointer shadow-sm active:scale-95"
+                  title="Gravar vídeo com explicação do requisito via câmera ou tela"
+                >
+                  <Camera className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                  <span className="truncate">Gravar Vídeo</span>
+                </button>
               </div>
 
               {/* Attached File Pill */}
               {attachedFile && (
-                <div className="bg-indigo-950/60 border border-indigo-800/80 rounded-xl p-2 flex items-center justify-between text-xs text-indigo-200">
-                  <div className="flex items-center space-x-2 truncate pr-2">
-                    <FileCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <div className="truncate">
-                      <p className="font-bold text-white truncate">{attachedFile.fileName}</p>
-                      <p className="text-[10px] text-indigo-300 font-medium">
-                        {attachedFile.fileSizeFormatted} • {attachedFile.isImage ? "Visão Multimodal por IA" : "Texto Extraído"}
-                      </p>
+                <div className="bg-slate-950 border border-indigo-800/80 rounded-xl p-2.5 space-y-2 text-xs text-indigo-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2 truncate pr-2">
+                      {attachedFile.isSpreadsheet ? (
+                        <FileSpreadsheet className="w-4 h-4 text-emerald-400 shrink-0" />
+                      ) : attachedFile.isZip ? (
+                        <FolderArchive className="w-4 h-4 text-amber-400 shrink-0" />
+                      ) : attachedFile.isVideo ? (
+                        <Video className="w-4 h-4 text-rose-400 shrink-0" />
+                      ) : (
+                        <FileCheck className="w-4 h-4 text-indigo-400 shrink-0" />
+                      )}
+
+                      <div className="truncate">
+                        <p className="font-bold text-white truncate">{attachedFile.fileName}</p>
+                        <p className="text-[10px] text-slate-400 font-medium">
+                          {attachedFile.fileSizeFormatted} • {attachedFile.fileType}
+                        </p>
+                      </div>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAttachedFile(null);
+                        if (fileInputRef.current) fileInputRef.current.value = "";
+                      }}
+                      className="p-1 hover:bg-slate-800 text-slate-400 hover:text-rose-400 rounded-lg transition shrink-0 cursor-pointer"
+                      title="Remover anexo"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAttachedFile(null);
-                      if (fileInputRef.current) fileInputRef.current.value = "";
-                    }}
-                    className="p-1 hover:bg-indigo-900/60 text-slate-400 hover:text-rose-400 rounded-lg transition shrink-0 cursor-pointer"
-                    title="Remover anexo"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+
+                  {/* Video Player Preview if Video is Attached */}
+                  {attachedFile.isVideo && attachedFile.videoUrl && (
+                    <div className="rounded-lg overflow-hidden border border-slate-800 bg-black aspect-video max-h-36 mx-auto">
+                      <video
+                        src={attachedFile.videoUrl}
+                        controls
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1177,6 +1250,13 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
           </div>
         )}
       </div>
+
+      {/* Video Recorder Modal */}
+      <VideoRecorderModal
+        isOpen={isVideoModalOpen}
+        onClose={() => setIsVideoModalOpen(false)}
+        onSaveVideo={handleSaveRecordedVideo}
+      />
     </div>
   );
 };
