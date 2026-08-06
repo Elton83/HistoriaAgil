@@ -26,6 +26,7 @@ export interface SupabaseUserStoryRow {
   audit?: any | null;
   validation_report?: any | null;
   attached_file_name?: string | null;
+  homologation_checklist?: any[] | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -72,6 +73,7 @@ export function mapRowToUserStory(row: SupabaseUserStoryRow): UserStory {
     audit: row.audit || undefined,
     validationReport: row.validation_report || undefined,
     attachedFileName: row.attached_file_name || undefined,
+    homologationChecklist: Array.isArray(row.homologation_checklist) ? row.homologation_checklist : undefined,
   };
 }
 
@@ -98,6 +100,7 @@ export function mapUserStoryToRow(story: UserStory, userId?: string | null): Sup
     audit: story.audit || null,
     validation_report: story.validationReport || null,
     attached_file_name: story.attachedFileName || null,
+    homologation_checklist: story.homologationChecklist || [],
   };
 
   if (userId && isValidUuid(userId)) {

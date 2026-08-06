@@ -50,6 +50,25 @@ export interface ValidationReport {
   evaluatedAt: string;
 }
 
+export interface HomologationItem {
+  id: string;
+  label: string;
+  completed: boolean;
+  completedAt?: string;
+  completedBy?: string;
+}
+
+export const DEFAULT_HOMOLOGATION_STEPS: string[] = [
+  "Homologar com usuário",
+  "Integrar ao Staging",
+  "Revisão Q.A (Opcional)",
+  "Integrar ao Main",
+  "Revisão Q.A (Opcional)",
+  "Execução de Script",
+  "Cadastrar Avisos no Sistema",
+  "Comunicar Interessados",
+];
+
 export interface UserStory {
   id: string;
   title: string;
@@ -76,6 +95,7 @@ export interface UserStory {
   audit?: InvestAudit;
   validationReport?: ValidationReport;
   attachedFileName?: string;
+  homologationChecklist?: HomologationItem[];
 }
 
 export interface ContextPreset {

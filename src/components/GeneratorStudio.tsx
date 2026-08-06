@@ -133,7 +133,13 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
       const parsed = await parseUploadedFile(file);
       setAttachedFile(parsed);
 
-      if (parsed.textContent && !parsed.isImage) {
+      if (parsed.isImage) {
+        setContextText((prev) =>
+          prev.trim()
+            ? prev
+            : `Análise de requisito a partir do arquivo de imagem anexado (${parsed.fileName}).`
+        );
+      } else if (parsed.textContent) {
         // Append or replace text content
         setContextText((prev) =>
           prev.trim()
@@ -180,10 +186,14 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
 
     let imagesPayload: Array<{ mimeType: string; base64Data: string; fileName?: string }> | undefined = undefined;
     if (attachedFile && attachedFile.isImage && attachedFile.base64Data && attachedFile.mimeType) {
+      let mime = attachedFile.mimeType;
+      if (mime === "image/jpg" || mime === "image/pjpeg") mime = "image/jpeg";
+      const cleanBase64 = attachedFile.base64Data.replace(/^data:[^;]+;base64,/, "").trim();
+
       imagesPayload = [
         {
-          mimeType: attachedFile.mimeType,
-          base64Data: attachedFile.base64Data,
+          mimeType: mime,
+          base64Data: cleanBase64,
           fileName: attachedFile.fileName,
         },
       ];

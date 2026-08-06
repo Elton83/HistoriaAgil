@@ -13,14 +13,16 @@ import {
   BarChart3,
   RefreshCw,
   Database,
+  Workflow,
+  CheckSquare,
 } from "lucide-react";
 import { UserProfile } from "./AuthModal";
 import { EBLogo } from "./EBLogo";
 import { isSupabaseConfigured } from "../lib/supabase";
 
 interface SidebarNavProps {
-  activeTab: "generator" | "kanban" | "reports" | "audit" | "guide" | "admin";
-  setActiveTab: (tab: "generator" | "kanban" | "reports" | "audit" | "guide" | "admin") => void;
+  activeTab: "generator" | "kanban" | "pipeline" | "reports" | "audit" | "guide" | "admin";
+  setActiveTab: (tab: "generator" | "kanban" | "pipeline" | "reports" | "audit" | "guide" | "admin") => void;
   savedStoriesCount: number;
   readyStoriesCount: number;
   currentUser: UserProfile | null;
@@ -66,6 +68,13 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
       label: "Quadro Backlog",
       icon: Kanban,
       badge: savedStoriesCount > 0 ? savedStoriesCount : null,
+    },
+    {
+      id: "pipeline" as const,
+      label: "Esteira Homologação",
+      icon: Workflow,
+      badge: "8 Passos",
+      badgeColor: "bg-emerald-950 text-emerald-300 border-emerald-800/80",
     },
     {
       id: "reports" as const,

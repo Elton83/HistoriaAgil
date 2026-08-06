@@ -9,7 +9,8 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 
-app.use(express.json({ limit: "20mb" }));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Initialize Gemini Client
 const getGeminiClient = () => {
@@ -272,10 +273,14 @@ app.post("/api/generate-story", async (req, res) => {
     if (Array.isArray(images) && images.length > 0) {
       images.forEach((img: { mimeType?: string; base64Data?: string }) => {
         if (img.base64Data && img.mimeType) {
+          let mime = img.mimeType;
+          if (mime === "image/jpg" || mime === "image/pjpeg") mime = "image/jpeg";
+          const cleanBase64 = img.base64Data.replace(/^data:[^;]+;base64,/, "").trim();
+
           parts.unshift({
             inlineData: {
-              mimeType: img.mimeType,
-              data: img.base64Data,
+              mimeType: mime,
+              data: cleanBase64,
             },
           });
         }

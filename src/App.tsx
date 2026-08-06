@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { SidebarNav } from "./components/SidebarNav";
 import { GeneratorStudio } from "./components/GeneratorStudio";
 import { BacklogKanban } from "./components/BacklogKanban";
+import { HomologationPipelineView } from "./components/HomologationPipelineView";
 import { ReportsView } from "./components/ReportsView";
 import { AdminPanel } from "./components/AdminPanel";
 import { LoginScreen } from "./components/LoginScreen";
@@ -25,7 +26,7 @@ import {
 import { CheckCircle2, AlertCircle, Loader2, Sparkles, PlusCircle, RefreshCw, Database } from "lucide-react";
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<"generator" | "kanban" | "reports" | "audit" | "guide" | "admin">("generator");
+  const [activeTab, setActiveTab] = useState<"generator" | "kanban" | "pipeline" | "reports" | "audit" | "guide" | "admin">("generator");
 
   // Supabase Connection Modal State
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
@@ -150,11 +151,26 @@ export default function App() {
   }, [stories]);
 
   // Handle Tab changes from Navigation
-  const handleTabChange = (tab: "generator" | "kanban" | "reports" | "audit" | "guide" | "admin") => {
+  const handleTabChange = (
+    tab: "generator" | "kanban" | "pipeline" | "reports" | "audit" | "guide" | "admin"
+  ) => {
     if (tab === "guide") {
       setIsGuideModalOpen(true);
     } else {
       setActiveTab(tab);
+    }
+  };
+
+  // Update a single story's state and sync with Supabase / LocalStorage
+  const handleUpdateStory = async (updatedStory: UserStory) => {
+    setStories((prev) =>
+      prev.map((s) => (s.id === updatedStory.id ? updatedStory : s))
+    );
+    if (currentStory && currentStory.id === updatedStory.id) {
+      setCurrentStory(updatedStory);
+    }
+    if (isSupabaseConfigured()) {
+      await saveStoryToSupabase(updatedStory);
     }
   };
 
@@ -183,7 +199,9 @@ export default function App() {
       });
 
       if (!response.ok) {
-        throw new Error("Falha na geração do requisito via backend.");
+        const errJson = await response.json().catch(() => ({}));
+        const errMsg = errJson.details || errJson.error || "Falha na geração do requisito via backend.";
+        throw new Error(errMsg);
       }
 
       const data = await response.json();
@@ -215,9 +233,9 @@ export default function App() {
 
       setCurrentStory(newStory);
       showToast("História de usuário gerada com sucesso!", "success");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error generating story:", error);
-      showToast("Erro ao gerar história via servidor de IA.", "error");
+      showToast(error?.message || "Erro ao gerar história via servidor de IA.", "error");
     } finally {
       setIsGenerating(false);
     }
@@ -509,6 +527,7 @@ export default function App() {
               <span>
                 {activeTab === "generator" && "Gerador Ágil & Estúdio de Requisitos"}
                 {activeTab === "kanban" && "Quadro Backlog & Fluxo Kanban"}
+                {activeTab === "pipeline" && "Esteira de Homologação & Checklist de Release"}
                 {activeTab === "reports" && "Relatórios Ágeis & Analytics do Backlog"}
                 {activeTab === "admin" && "Painel de Governança & Controle de Acesso (RBAC)"}
                 {activeTab === "guide" && "Guia Metodológico & Boas Práticas Scrum"}
@@ -516,7 +535,8 @@ export default function App() {
             </h2>
             <p className="text-xs text-slate-400">
               {activeTab === "generator" && "Crie e edite histórias com AC, RN e BDD estruturados"}
-              {activeTab === "kanban" && `Gestão e homologação de ${stories.length} histórias cadastradas`}
+              {activeTab === "kanban" && `Gestão e movimentação de ${stories.length} histórias cadastradas`}
+              {activeTab === "pipeline" && "Validação com 8 passos de homologação, Q.A e publicação em Staging/Main"}
               {activeTab === "reports" && "Métricas de Story Points, maturidade de requisitos e exportação CSV"}
               {activeTab === "admin" && "Gerencie perfis, permissões e consulte métricas do banco de dados"}
               {activeTab === "guide" && "Diretrizes INVEST, Gherkin e Engenharia de Requisitos"}
@@ -588,6 +608,17 @@ export default function App() {
               onUpdateStatus={handleUpdateStatus}
               onDeleteStory={handleDeleteStory}
               onCreateNewStory={handleCreateNewStory}
+            />
+          )}
+
+          {activeTab === "pipeline" && (
+            <HomologationPipelineView
+              stories={stories}
+              onUpdateStory={handleUpdateStory}
+              onSelectStoryForGenerator={(story) => {
+                setCurrentStory(story);
+                setActiveTab("generator");
+              }}
             />
           )}
 

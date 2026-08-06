@@ -22,20 +22,48 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function sanitizeText(str: string): string {
+  if (!str) return "";
+  // Remove null bytes and non-printable control characters except line breaks & tabs
+  const cleaned = str.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "").trim();
+  // If the file is binary and resulted in mostly non-printable or garbage characters, check printable ratio
+  if (cleaned.length > 50) {
+    let printableCount = 0;
+    for (let i = 0; i < Math.min(cleaned.length, 500); i++) {
+      const code = cleaned.charCodeAt(i);
+      if (code >= 32 && code <= 126) printableCount++;
+    }
+    const ratio = printableCount / Math.min(cleaned.length, 500);
+    if (ratio < 0.6) {
+      return "[Conteúdo binário do documento anexado - formato de arquivo não legível em texto puro]";
+    }
+  }
+  return cleaned;
+}
+
 export async function parseUploadedFile(file: File): Promise<ParsedFileInfo> {
   const fileName = file.name;
   const fileSizeFormatted = formatFileSize(file.size);
-  const mimeType = file.type || "";
   const ext = fileName.split(".").pop()?.toLowerCase() || "";
+  let rawMime = file.type || "";
 
-  const isImage = mimeType.startsWith("image/") || ["png", "jpg", "jpeg", "webp", "gif", "svg"].includes(ext);
-  const isVideo = mimeType.startsWith("video/") || ["mp4", "webm", "mov", "avi", "mkv"].includes(ext);
+  // Normalize image MIME types
+  if (!rawMime || rawMime === "image/jpg" || rawMime === "image/pjpeg") {
+    if (ext === "jpg" || ext === "jpeg") rawMime = "image/jpeg";
+    else if (ext === "png") rawMime = "image/png";
+    else if (ext === "webp") rawMime = "image/webp";
+    else if (ext === "gif") rawMime = "image/gif";
+    else if (ext === "svg") rawMime = "image/svg+xml";
+  }
+
+  const isImage = rawMime.startsWith("image/") || ["png", "jpg", "jpeg", "webp", "gif"].includes(ext);
+  const isVideo = rawMime.startsWith("video/") || ["mp4", "webm", "mov", "avi", "mkv"].includes(ext);
   const isSpreadsheet =
-    mimeType.includes("spreadsheet") ||
-    mimeType.includes("excel") ||
-    mimeType.includes("csv") ||
+    rawMime.includes("spreadsheet") ||
+    rawMime.includes("excel") ||
+    rawMime.includes("csv") ||
     ["csv", "xlsx", "xls", "ods"].includes(ext);
-  const isZip = mimeType.includes("zip") || ext === "zip";
+  const isZip = rawMime.includes("zip") || ext === "zip";
 
   // 1. IMAGE PROCESSING
   if (isImage) {
@@ -43,14 +71,15 @@ export async function parseUploadedFile(file: File): Promise<ParsedFileInfo> {
       const reader = new FileReader();
       reader.onload = () => {
         const resultStr = reader.result as string;
-        const base64Data = resultStr.split(",")[1] || resultStr;
+        const base64Data = resultStr.replace(/^data:[^;]+;base64,/, "").trim();
+        const effectiveMime = rawMime || (ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png");
         resolve({
           fileName,
           fileSizeFormatted,
-          fileType: mimeType || "Imagem",
+          fileType: effectiveMime,
           category: "image",
           base64Data,
-          mimeType: mimeType || "image/png",
+          mimeType: effectiveMime === "image/jpg" ? "image/jpeg" : effectiveMime,
           isImage: true,
           isVideo: false,
           isSpreadsheet: false,
@@ -74,10 +103,10 @@ export async function parseUploadedFile(file: File): Promise<ParsedFileInfo> {
         resolve({
           fileName,
           fileSizeFormatted,
-          fileType: mimeType || "Vídeo",
+          fileType: rawMime || "Vídeo",
           category: "video",
           base64Data,
-          mimeType: mimeType || "video/mp4",
+          mimeType: rawMime || "video/mp4",
           isImage: false,
           isVideo: true,
           isSpreadsheet: false,
@@ -198,12 +227,13 @@ export async function parseUploadedFile(file: File): Promise<ParsedFileInfo> {
     const reader = new FileReader();
     reader.onload = () => {
       const textContent = (reader.result as string) || "";
+      const cleanedText = sanitizeText(textContent);
       resolve({
         fileName,
         fileSizeFormatted,
-        fileType: mimeType || "Documento",
+        fileType: rawMime || "Documento",
         category: "document",
-        textContent: `--- Conteúdo do Documento (${fileName}) ---\n${textContent}`,
+        textContent: `--- Conteúdo do Documento (${fileName}) ---\n${cleanedText}`,
         isImage: false,
         isVideo: false,
         isSpreadsheet: false,
