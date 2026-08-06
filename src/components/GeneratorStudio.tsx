@@ -473,22 +473,11 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
               </div>
             </div>
 
-            {/* File Upload / Drag & Drop & Video Recording Area */}
+            {/* File Upload / Drag & Drop Area */}
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="block text-[11px] font-semibold text-slate-300">
-                  Anexar Arquivo ou Gravar Vídeo:
-                </label>
-                <div className="flex items-center space-x-1.5 text-[10px]">
-                  <span className="text-emerald-400 font-medium">Planilhas</span>
-                  <span className="text-slate-600">•</span>
-                  <span className="text-amber-400 font-medium">ZIP</span>
-                  <span className="text-slate-600">•</span>
-                  <span className="text-rose-400 font-medium">Vídeos</span>
-                  <span className="text-slate-600">•</span>
-                  <span className="text-indigo-400 font-medium">Docs/Imagens</span>
-                </div>
-              </div>
+              <label className="block text-[11px] font-semibold text-slate-300">
+                Anexar Arquivo:
+              </label>
 
               <input
                 ref={fileInputRef}
@@ -502,49 +491,36 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                 className="hidden"
               />
 
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-1.5">
-                {/* Main Drag & Drop Zone (3 cols) */}
-                <div
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setIsDragOver(true);
-                  }}
-                  onDragLeave={() => setIsDragOver(false)}
-                  onDrop={handleDropFile}
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`sm:col-span-3 border border-dashed rounded-xl p-2 text-center cursor-pointer transition flex items-center justify-center space-x-2 ${
-                    isDragOver
-                      ? "border-indigo-400 bg-indigo-950/40"
-                      : "border-slate-800 hover:border-slate-700 bg-slate-950/60 hover:bg-slate-950"
-                  }`}
-                >
-                  {isReadingFile ? (
-                    <div className="flex items-center space-x-2 text-indigo-400 text-xs py-0.5 font-medium">
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>Processando arquivo...</span>
+              {/* Main Drag & Drop Zone */}
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragOver(true);
+                }}
+                onDragLeave={() => setIsDragOver(false)}
+                onDrop={handleDropFile}
+                onClick={() => fileInputRef.current?.click()}
+                className={`w-full border border-dashed rounded-xl p-2 text-center cursor-pointer transition flex items-center justify-center space-x-2 ${
+                  isDragOver
+                    ? "border-indigo-400 bg-indigo-950/40"
+                    : "border-slate-800 hover:border-slate-700 bg-slate-950/60 hover:bg-slate-950"
+                }`}
+              >
+                {isReadingFile ? (
+                  <div className="flex items-center space-x-2 text-indigo-400 text-xs py-0.5 font-medium">
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Processando arquivo...</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center space-x-2 text-[11px] text-slate-300">
+                    <div className="p-1 bg-indigo-500/10 text-indigo-400 rounded-md border border-indigo-500/20">
+                      <Upload className="w-3.5 h-3.5" />
                     </div>
-                  ) : (
-                    <div className="flex items-center space-x-2 text-[11px] text-slate-300">
-                      <div className="p-1 bg-indigo-500/10 text-indigo-400 rounded-md border border-indigo-500/20">
-                        <Upload className="w-3.5 h-3.5" />
-                      </div>
-                      <span>
-                        <span className="font-semibold text-indigo-400">Anexar arquivo</span> (Excel, CSV, ZIP, Doc, Imagem)
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Video Recording Trigger Button (1 col) */}
-                <button
-                  type="button"
-                  onClick={() => setIsVideoModalOpen(true)}
-                  className="sm:col-span-1 border border-rose-500/30 bg-rose-950/30 hover:bg-rose-900/40 text-rose-300 rounded-xl p-2 text-[11px] font-bold transition flex items-center justify-center space-x-1.5 cursor-pointer shadow-sm active:scale-95"
-                  title="Gravar vídeo com explicação do requisito via câmera ou tela"
-                >
-                  <Camera className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                  <span className="truncate">Gravar Vídeo</span>
-                </button>
+                    <span>
+                      <span className="font-semibold text-indigo-400">Anexar arquivo</span> (Excel, CSV, ZIP, Doc, Imagem)
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Attached File Pill */}
