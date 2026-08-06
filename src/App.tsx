@@ -9,6 +9,15 @@ import { AuthModal, UserProfile } from "./components/AuthModal";
 import { UserStory, StoryStatus, InvestAudit } from "./types";
 import { INITIAL_SAMPLE_STORY } from "./data/presets";
 import { validateUserStory } from "./utils/storyValidator";
+import { isSupabaseConfigured } from "./lib/supabase";
+import {
+  fetchStoriesFromSupabase,
+  saveStoryToSupabase,
+  updateStoryStatusInSupabase,
+  deleteStoryFromSupabase,
+  clearAllStoriesFromSupabase,
+} from "./services/supabaseService";
+import { CheckCircle2, AlertCircle, Loader2, Database } from "lucide-react";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<"generator" | "kanban" | "audit" | "guide">("generator");
@@ -23,6 +32,16 @@ export default function App() {
     }
   });
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
+  // Toast / Banner notifications
+  const [toastMessage, setToastMessage] = useState<{ text: string; type: "success" | "error" | "info" } | null>(null);
+
+  const showToast = (text: string, type: "success" | "error" | "info" = "success") => {
+    setToastMessage({ text, type });
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 4000);
+  };
 
   const handleLogin = (user: UserProfile) => {
     setCurrentUser(user);
@@ -65,6 +84,7 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRefining, setIsRefining] = useState(false);
   const [isAuditing, setIsAuditing] = useState(false);
+  const [isLoadingStories, setIsLoadingStories] = useState(false);
 
   // Modal visibility
   const [isRefineModalOpen, setIsRefineModalOpen] = useState(false);
@@ -74,7 +94,32 @@ export default function App() {
   // Active audit results
   const [currentAudit, setCurrentAudit] = useState<InvestAudit | null>(null);
 
-  // Sync stories to localStorage
+  // Initial load from Supabase if configured
+  useEffect(() => {
+    async function loadDataFromSupabase() {
+      if (!isSupabaseConfigured()) return;
+
+      setIsLoadingStories(true);
+      const result = await fetchStoriesFromSupabase(currentUser?.id);
+      setIsLoadingStories(false);
+
+      if (result.isSupabase && !result.error && result.stories.length > 0) {
+        const storiesWithReports = result.stories.map((s) => ({
+          ...s,
+          validationReport: s.validationReport || validateUserStory(s),
+        }));
+        setStories(storiesWithReports);
+        if (!currentStory || currentStory.id === INITIAL_SAMPLE_STORY.id) {
+          setCurrentStory(storiesWithReports[0]);
+        }
+        showToast("Histórias de usuário carregadas do Supabase PostgreSQL!", "info");
+      }
+    }
+
+    loadDataFromSupabase();
+  }, [currentUser?.id]);
+
+  // Sync stories to localStorage as backup
   useEffect(() => {
     try {
       localStorage.setItem("agile_studio_stories", JSON.stringify(stories));
@@ -239,33 +284,96 @@ export default function App() {
     }
   };
 
-  // Save story to Kanban backlog
-  const handleSaveToBacklog = (storyToSave: UserStory) => {
+  // Save story to Kanban backlog (and Supabase)
+  const handleSaveToBacklog = async (storyToSave: UserStory) => {
+    const storyWithTimestamp = {
+      ...storyToSave,
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Update state locally for instant UI response
     setStories((prev) => {
       const existsIndex = prev.findIndex((s) => s.id === storyToSave.id);
       if (existsIndex >= 0) {
         const next = [...prev];
-        next[existsIndex] = { ...storyToSave, updatedAt: new Date().toISOString() };
+        next[existsIndex] = storyWithTimestamp;
         return next;
       } else {
-        return [{ ...storyToSave, updatedAt: new Date().toISOString() }, ...prev];
+        return [storyWithTimestamp, ...prev];
       }
     });
+
+    // Save to Supabase
+    if (isSupabaseConfigured()) {
+      const res = await saveStoryToSupabase(storyWithTimestamp, currentUser?.id);
+      if (res.error) {
+        showToast(`Salvo localmente (Erro Supabase: ${res.error})`, "error");
+      } else {
+        // Update story ID if DB generated UUID
+        if (res.story && res.story.id !== storyWithTimestamp.id) {
+          setStories((prev) =>
+            prev.map((s) => (s.id === storyToSave.id ? res.story : s))
+          );
+          if (currentStory?.id === storyToSave.id) {
+            setCurrentStory(res.story);
+          }
+        }
+        showToast("História salva no Supabase PostgreSQL com sucesso!", "success");
+      }
+    } else {
+      showToast("História salva no backlog (Modo Cache Local)", "info");
+    }
   };
 
   // Update story status in Kanban
-  const handleUpdateStatus = (storyId: string, newStatus: StoryStatus) => {
+  const handleUpdateStatus = async (storyId: string, newStatus: StoryStatus) => {
     setStories((prev) =>
       prev.map((s) => (s.id === storyId ? { ...s, status: newStatus, updatedAt: new Date().toISOString() } : s))
     );
+
+    if (isSupabaseConfigured()) {
+      const res = await updateStoryStatusInSupabase(storyId, newStatus);
+      if (!res.error) {
+        showToast("Status da história atualizado no Supabase!", "success");
+      }
+    }
   };
 
   // Delete story
-  const handleDeleteStory = (storyId: string) => {
+  const handleDeleteStory = async (storyId: string) => {
     if (confirm("Tem certeza que deseja excluir esta história do backlog?")) {
       setStories((prev) => prev.filter((s) => s.id !== storyId));
       if (currentStory?.id === storyId) {
         setCurrentStory(null);
+      }
+
+      if (isSupabaseConfigured()) {
+        const res = await deleteStoryFromSupabase(storyId);
+        if (!res.error) {
+          showToast("História removida do Supabase PostgreSQL.", "success");
+        }
+      } else {
+        showToast("História removida do backlog.", "info");
+      }
+    }
+  };
+
+  // Reset all system data for real requirements entry
+  const handleResetSystem = async () => {
+    if (
+      confirm(
+        "Tem certeza que deseja resetar todas as histórias e limpar a área de trabalho para inserir seus dados e requisitos reais do zero?"
+      )
+    ) {
+      setStories([]);
+      setCurrentStory(null);
+      localStorage.removeItem("agile_studio_stories");
+
+      if (isSupabaseConfigured()) {
+        await clearAllStoriesFromSupabase(currentUser?.id);
+        showToast("Todas as histórias foram apagadas do Supabase PostgreSQL.", "info");
+      } else {
+        showToast("Área de trabalho resetada.", "info");
       }
     }
   };
@@ -314,10 +422,39 @@ export default function App() {
         readyStoriesCount={stories.filter((s) => s.status === "ready").length}
         currentUser={currentUser}
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
+        onResetSystem={handleResetSystem}
       />
+
+      {/* Toast Notification Floating Banner */}
+      {toastMessage && (
+        <div className="fixed bottom-5 right-5 z-50 animate-bounce">
+          <div
+            className={`px-4 py-3 rounded-xl border shadow-2xl flex items-center space-x-3 text-xs font-semibold backdrop-blur-md ${
+              toastMessage.type === "success"
+                ? "bg-emerald-950/90 border-emerald-500/50 text-emerald-200"
+                : toastMessage.type === "error"
+                ? "bg-rose-950/90 border-rose-500/50 text-rose-200"
+                : "bg-indigo-950/90 border-indigo-500/50 text-indigo-200"
+            }`}
+          >
+            {toastMessage.type === "error" ? (
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            )}
+            <span>{toastMessage.text}</span>
+          </div>
+        </div>
+      )}
 
       {/* Main Workspace Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {isLoadingStories && (
+          <div className="mb-4 p-3 bg-indigo-950/40 border border-indigo-800/50 rounded-xl flex items-center space-x-3 text-indigo-300 text-xs">
+            <Loader2 className="w-4 h-4 animate-spin shrink-0 text-indigo-400" />
+            <span>Sincronizando histórias com o banco de dados Supabase PostgreSQL...</span>
+          </div>
+        )}
         {activeTab === "generator" && (
           <GeneratorStudio
             currentStory={currentStory}
@@ -327,6 +464,7 @@ export default function App() {
             onSaveToBacklog={handleSaveToBacklog}
             onOpenRefineModal={() => setIsRefineModalOpen(true)}
             onOpenAuditModal={handleOpenAuditModal}
+            onResetSystem={handleResetSystem}
           />
         )}
 

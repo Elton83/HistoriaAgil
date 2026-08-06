@@ -1,6 +1,7 @@
 import React from "react";
-import { Sparkles, Kanban, BookOpen, User, UserCheck } from "lucide-react";
+import { Sparkles, Kanban, BookOpen, User, RotateCcw, Database } from "lucide-react";
 import { UserProfile } from "./AuthModal";
+import { isSupabaseConfigured } from "../lib/supabase";
 
 interface HeaderProps {
   activeTab: "generator" | "kanban" | "audit" | "guide";
@@ -9,6 +10,7 @@ interface HeaderProps {
   readyStoriesCount: number;
   currentUser: UserProfile | null;
   onOpenAuthModal: () => void;
+  onResetSystem?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -18,7 +20,10 @@ export const Header: React.FC<HeaderProps> = ({
   readyStoriesCount,
   currentUser,
   onOpenAuthModal,
+  onResetSystem,
 }) => {
+  const isDbConnected = isSupabaseConfigured();
+
   return (
     <header className="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 text-slate-100 sticky top-0 z-40 shadow-lg">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -37,6 +42,22 @@ export const Header: React.FC<HeaderProps> = ({
                 </h1>
                 <span className="bg-indigo-950/80 border border-indigo-800/80 text-indigo-300 text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider">
                   Scrum & BDD
+                </span>
+                {/* Supabase Status Pill */}
+                <span
+                  title={
+                    isDbConnected
+                      ? "Conectado ao Supabase PostgreSQL"
+                      : "Modo Local (Configure VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY para ativar o banco)"
+                  }
+                  className={`hidden md:flex items-center space-x-1 text-[10px] font-bold px-2 py-0.5 rounded-full border cursor-help ${
+                    isDbConnected
+                      ? "bg-emerald-950/80 text-emerald-300 border-emerald-800/80"
+                      : "bg-amber-950/80 text-amber-300 border-amber-800/80"
+                  }`}
+                >
+                  <Database className="w-3 h-3" />
+                  <span>{isDbConnected ? "Supabase PostgreSQL" : "Cache Local"}</span>
                 </span>
               </div>
               <p className="text-xs text-slate-400 hidden sm:block">
@@ -92,8 +113,19 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             </nav>
 
-            {/* User Profile / Login Button */}
-            <div className="border-l border-slate-800 pl-2 sm:pl-3">
+            {/* User Profile / Login Button & Reset Data */}
+            <div className="border-l border-slate-800 pl-2 sm:pl-3 flex items-center space-x-2">
+              {onResetSystem && (
+                <button
+                  onClick={onResetSystem}
+                  className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-rose-400 bg-slate-950/60 hover:bg-rose-950/30 border border-slate-800 hover:border-rose-900/60 transition cursor-pointer"
+                  title="Resetar todos os dados de exemplo para criar requisitos reais"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-rose-400/80" />
+                  <span className="hidden lg:inline text-[11px]">Resetar p/ Dados Reais</span>
+                </button>
+              )}
+
               {currentUser ? (
                 <button
                   onClick={onOpenAuthModal}

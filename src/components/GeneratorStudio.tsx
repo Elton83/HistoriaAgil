@@ -49,6 +49,7 @@ interface GeneratorStudioProps {
   onSaveToBacklog: (story: UserStory) => void;
   onOpenRefineModal: () => void;
   onOpenAuditModal: () => void;
+  onResetSystem?: () => void;
 }
 
 export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
@@ -59,14 +60,26 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
   onSaveToBacklog,
   onOpenRefineModal,
   onOpenAuditModal,
+  onResetSystem,
 }) => {
   // Input state
   const [contextText, setContextText] = useState("");
   const [projectName, setProjectName] = useState("");
   const [epicName, setEpicName] = useState("");
-  const [requester, setRequester] = useState("Ana Paula Costa - GPM de Pagamentos");
+  const [requester, setRequester] = useState("");
   const [extraInstructions, setExtraInstructions] = useState("");
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
+
+  // Clear form completely for real data entry
+  const handleClearForm = () => {
+    setContextText("");
+    setProjectName("");
+    setEpicName("");
+    setRequester("");
+    setExtraInstructions("");
+    setSelectedPresetId(null);
+    setAttachedFile(null);
+  };
 
   // File Upload State
   const [attachedFile, setAttachedFile] = useState<ParsedFileInfo | null>(null);
@@ -371,12 +384,23 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
               </div>
               <div>
                 <h2 className="font-bold text-sm text-white">Escopo & Contexto do Requisito</h2>
-                <p className="text-[11px] text-slate-400 font-medium">Insira as informações ou escolha um exemplo</p>
+                <p className="text-[11px] text-slate-400 font-medium">Insira as informações do seu requisito real</p>
               </div>
             </div>
-            <span className="text-[10px] bg-indigo-950/90 text-indigo-300 border border-indigo-800/80 font-mono px-2.5 py-1 rounded-full font-bold">
-              Engine v2.4
-            </span>
+            <div className="flex items-center space-x-1.5">
+              <button
+                type="button"
+                onClick={handleClearForm}
+                className="text-[10px] bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer flex items-center space-x-1"
+                title="Limpar formulário para digitar dados reais do zero"
+              >
+                <Trash2 className="w-3 h-3 text-rose-400" />
+                <span>Limpar</span>
+              </button>
+              <span className="text-[10px] bg-indigo-950/90 text-indigo-300 border border-indigo-800/80 font-mono px-2 py-0.5 rounded-full font-bold">
+                v2.4
+              </span>
+            </div>
           </div>
 
           {/* Minimalist Preset Pills */}

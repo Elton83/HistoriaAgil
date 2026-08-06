@@ -13,7 +13,9 @@ import {
   Briefcase,
   KeyRound,
   ShieldAlert,
+  Loader2,
 } from "lucide-react";
+import { syncUserProfileWithSupabase } from "../services/supabaseService";
 
 export interface UserProfile {
   id: string;
@@ -74,13 +76,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [role, setRole] = useState("Product Owner");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  // Feedback states
+  // Feedback & Loading states
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
@@ -94,12 +97,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       return;
     }
 
+    setIsLoading(true);
+
     // Extract name from email or use email prefix
     const derivedName = email.split("@")[0].replace(".", " ");
     const formattedName =
       derivedName.charAt(0).toUpperCase() + derivedName.slice(1);
 
-    const loggedUser: UserProfile = {
+    const rawUser: UserProfile = {
       id: `user-${Date.now()}`,
       name: formattedName || "Usuário Ágil",
       email: email,
@@ -107,7 +112,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       avatarColor: "from-indigo-500 to-indigo-700",
     };
 
-    setSuccessMessage(`Login realizado com sucesso! Bem-vindo, ${loggedUser.name}.`);
+    const result = await syncUserProfileWithSupabase(rawUser);
+    const loggedUser = result.profile;
+
+    setIsLoading(false);
+    setSuccessMessage(
+      result.isSupabase
+        ? `Login efetuado e perfil sincronizado no Supabase! Bem-vindo, ${loggedUser.name}.`
+        : `Login realizado com sucesso! Bem-vindo, ${loggedUser.name}.`
+    );
+
     setTimeout(() => {
       onLogin(loggedUser);
       setSuccessMessage(null);
@@ -115,7 +129,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }, 600);
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
@@ -134,7 +148,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       return;
     }
 
-    const newUser: UserProfile = {
+    setIsLoading(true);
+
+    const rawUser: UserProfile = {
       id: `user-${Date.now()}`,
       name: name,
       email: email,
@@ -142,7 +158,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       avatarColor: "from-indigo-500 to-purple-600",
     };
 
-    setSuccessMessage(`Conta criada com sucesso! Conectado como ${newUser.name}.`);
+    const result = await syncUserProfileWithSupabase(rawUser);
+    const newUser = result.profile;
+
+    setIsLoading(false);
+    setSuccessMessage(
+      result.isSupabase
+        ? `Conta criada e salva no Supabase PostgreSQL! Conectado como ${newUser.name}.`
+        : `Conta criada com sucesso! Conectado como ${newUser.name}.`
+    );
+
     setTimeout(() => {
       onLogin(newUser);
       setSuccessMessage(null);
@@ -150,12 +175,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }, 600);
   };
 
-  const handleSelectDemoAccount = (acc: UserProfile) => {
+  const handleSelectDemoAccount = async (acc: UserProfile) => {
     setEmail(acc.email);
     setPassword("••••••••");
-    setSuccessMessage(`Acessando como ${acc.name}...`);
+    setIsLoading(true);
+    setSuccessMessage(`Sincronizando conta demo (${acc.name}) no Supabase...`);
+
+    const result = await syncUserProfileWithSupabase(acc);
+    setIsLoading(false);
+
+    setSuccessMessage(`Acessando como ${result.profile.name}...`);
     setTimeout(() => {
-      onLogin(acc);
+      onLogin(result.profile);
       setSuccessMessage(null);
       onClose();
     }, 400);
@@ -403,9 +434,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 {/* Submit Button */}
                 <button
                   type="submit"
-                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-indigo-600/20 transition cursor-pointer mt-2"
+                  disabled={isLoading}
+                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-indigo-600/20 transition flex items-center justify-center space-x-2 cursor-pointer mt-2"
                 >
-                  Entrar no Sistema
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Conectando...</span>
+                    </>
+                  ) : (
+                    <span>Entrar no Sistema</span>
+                  )}
                 </button>
               </form>
             )}
@@ -508,9 +547,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 {/* Submit Register */}
                 <button
                   type="submit"
-                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-indigo-600/20 transition cursor-pointer mt-2"
+                  disabled={isLoading}
+                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-indigo-600/20 transition flex items-center justify-center space-x-2 cursor-pointer mt-2"
                 >
-                  Criar Conta e Acessar
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Criando Conta no Banco...</span>
+                    </>
+                  ) : (
+                    <span>Criar Conta e Acessar</span>
+                  )}
                 </button>
               </form>
             )}
