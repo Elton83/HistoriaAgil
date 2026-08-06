@@ -282,13 +282,16 @@ export async function syncUserProfileWithSupabase(
   profile: UserProfile
 ): Promise<{ profile: UserProfile; isSupabase: boolean; error?: string }> {
   const supabase = getSupabaseClient();
+  const cleanEmail = profile.email.trim().toLowerCase();
+  const normalizedProfile: UserProfile = { ...profile, email: cleanEmail };
+
   if (!supabase) {
-    return { profile, isSupabase: false };
+    return { profile: normalizedProfile, isSupabase: false };
   }
 
   try {
     const payload: any = {
-      email: profile.email,
+      email: cleanEmail,
       name: profile.name,
       role: profile.role,
       avatar_color: profile.avatarColor || "from-indigo-500 to-indigo-700",
@@ -299,15 +302,61 @@ export async function syncUserProfileWithSupabase(
       payload.id = profile.id;
     }
 
-    const { data, error } = await supabase
+    // Try upsert first
+    let { data, error } = await supabase
       .from("profiles")
       .upsert(payload, { onConflict: "email" })
       .select("*")
-      .single();
+      .maybeSingle();
 
-    if (error) {
-      console.warn("[Supabase] Error syncing profile:", error.message);
-      return { profile, isSupabase: true, error: error.message };
+    // Fallback if upsert fails (e.g. if email doesn't have a UNIQUE constraint in Postgres)
+    if (error || !data) {
+      console.warn("[Supabase] Upsert warning, attempting fallback select + insert/update:", error?.message);
+
+      const { data: existing } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("email", cleanEmail)
+        .maybeSingle();
+
+      if (existing) {
+        const { data: updated, error: updateErr } = await supabase
+          .from("profiles")
+          .update({
+            name: profile.name,
+            role: profile.role,
+            avatar_color: profile.avatarColor || "from-indigo-500 to-indigo-700",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("email", cleanEmail)
+          .select("*")
+          .maybeSingle();
+
+        if (updated) {
+          data = updated;
+          error = null;
+        } else if (updateErr) {
+          error = updateErr;
+        }
+      } else {
+        const { data: inserted, error: insertErr } = await supabase
+          .from("profiles")
+          .insert([payload])
+          .select("*")
+          .maybeSingle();
+
+        if (inserted) {
+          data = inserted;
+          error = null;
+        } else if (insertErr) {
+          error = insertErr;
+        }
+      }
+    }
+
+    if (error || !data) {
+      console.warn("[Supabase] Could not sync profile to DB:", error?.message);
+      return { profile: normalizedProfile, isSupabase: true, error: error?.message };
     }
 
     const syncedProfile: UserProfile = {
@@ -321,7 +370,7 @@ export async function syncUserProfileWithSupabase(
     return { profile: syncedProfile, isSupabase: true };
   } catch (err: any) {
     console.warn("[Supabase] Error in syncUserProfileWithSupabase:", err);
-    return { profile, isSupabase: true, error: err.message };
+    return { profile: normalizedProfile, isSupabase: true, error: err.message };
   }
 }
 
@@ -441,37 +490,13 @@ export async function updateUserRoleInSupabase(
  */
 export async function saveUserProfileToSupabase(
   profile: UserProfile
-): Promise<{ isSupabase: boolean; error?: string }> {
-  const supabase = getSupabaseClient();
-  if (!supabase) {
-    return { isSupabase: false };
-  }
-
-  try {
-    const payload: any = {
-      email: profile.email,
-      name: profile.name,
-      role: profile.role,
-      avatar_color: profile.avatarColor || "from-indigo-500 to-indigo-700",
-      updated_at: new Date().toISOString(),
-    };
-
-    if (profile.id && isValidUuid(profile.id)) {
-      payload.id = profile.id;
-    }
-
-    const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "email" });
-
-    if (error) {
-      console.warn("[Supabase] Error saving user profile:", error.message);
-      return { isSupabase: true, error: error.message };
-    }
-
-    return { isSupabase: true };
-  } catch (err: any) {
-    console.warn("[Supabase] Error saving user profile:", err);
-    return { isSupabase: true, error: err.message || "Erro de conexão com Supabase" };
-  }
+): Promise<{ profile?: UserProfile; isSupabase: boolean; error?: string }> {
+  const result = await syncUserProfileWithSupabase(profile);
+  return {
+    profile: result.profile,
+    isSupabase: result.isSupabase,
+    error: result.error,
+  };
 }
 
 /**

@@ -149,7 +149,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     const res = await fetchAllProfilesFromSupabase();
     setIsLoadingProfiles(false);
 
-    if (res.isSupabase && res.profiles.length > 0) {
+    if (res.isSupabase) {
       const merged = mergeProfiles(res.profiles, local);
       setProfiles(merged);
     } else {

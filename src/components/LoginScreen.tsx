@@ -98,10 +98,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
         role: "Product Owner",
         avatarColor: "from-indigo-500 to-indigo-700",
       };
-
-      const result = await syncUserProfileWithSupabase(loggedUser);
-      if (result.profile) loggedUser = result.profile;
     }
+
+    // Always sync with Supabase to ensure persistent DB profile
+    const result = await syncUserProfileWithSupabase(loggedUser);
+    if (result.profile) loggedUser = result.profile;
 
     upsertLocalProfile(loggedUser);
 
