@@ -6,7 +6,6 @@ import {
   User,
   Eye,
   EyeOff,
-  UserCheck,
   Briefcase,
   ShieldAlert,
   Loader2,
@@ -14,36 +13,15 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { UserProfile } from "./AuthModal";
-import { syncUserProfileWithSupabase } from "../services/supabaseService";
+import {
+  syncUserProfileWithSupabase,
+  fetchProfileByEmailFromSupabase,
+} from "../services/supabaseService";
 import { EBLogo } from "./EBLogo";
 
 interface LoginScreenProps {
   onLogin: (user: UserProfile) => void;
 }
-
-const DEMO_ACCOUNTS: UserProfile[] = [
-  {
-    id: "user-po-1",
-    name: "Elton Rabelo",
-    email: "elton.rabelo@agile.com",
-    role: "Administrador / GPM",
-    avatarColor: "from-indigo-500 to-indigo-700",
-  },
-  {
-    id: "user-sm-2",
-    name: "Ana Paula Costa",
-    email: "ana.costa@agile.com",
-    role: "Scrum Master & Agile Coach",
-    avatarColor: "from-emerald-500 to-teal-700",
-  },
-  {
-    id: "user-dev-3",
-    name: "Carlos Eduardo",
-    email: "carlos.dev@agile.com",
-    role: "Tech Lead / Arquiteto",
-    avatarColor: "from-amber-500 to-orange-700",
-  },
-];
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
@@ -65,43 +43,58 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
     e.preventDefault();
     setErrorMessage(null);
 
-    if (!email.trim() || !password.trim()) {
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanEmail || !password.trim()) {
       setErrorMessage("Por favor, preencha o e-mail e a senha para entrar.");
       return;
     }
 
-    if (!email.includes("@")) {
+    if (!cleanEmail.includes("@")) {
       setErrorMessage("Informe um endereço de e-mail válido.");
       return;
     }
 
     setIsLoading(true);
 
-    const derivedName = email.split("@")[0].replace(".", " ");
-    const formattedName =
-      derivedName.charAt(0).toUpperCase() + derivedName.slice(1);
+    // Look up existing user profile in Supabase by email
+    const existing = await fetchProfileByEmailFromSupabase(cleanEmail);
 
-    const rawUser: UserProfile = {
-      id: `user-${Date.now()}`,
-      name: formattedName || "Usuário Ágil",
-      email: email,
-      role: "Product Owner",
-      avatarColor: "from-indigo-500 to-indigo-700",
-    };
+    let loggedUser: UserProfile;
 
-    const result = await syncUserProfileWithSupabase(rawUser);
-    const loggedUser = result.profile;
+    if (existing.profile) {
+      loggedUser = existing.profile;
+    } else if (existing.isSupabase) {
+      // User profile not found in Supabase
+      setIsLoading(false);
+      setErrorMessage(
+        "Conta não encontrada para este e-mail. Por favor, crie sua conta na aba 'Criar Conta'."
+      );
+      return;
+    } else {
+      // Fallback if Supabase client is offline/unconfigured
+      const derivedName = cleanEmail.split("@")[0].replace(".", " ");
+      const formattedName =
+        derivedName.charAt(0).toUpperCase() + derivedName.slice(1);
+
+      const rawUser: UserProfile = {
+        id: `user-${Date.now()}`,
+        name: formattedName || "Usuário Ágil",
+        email: cleanEmail,
+        role: "Product Owner",
+        avatarColor: "from-indigo-500 to-indigo-700",
+      };
+
+      const result = await syncUserProfileWithSupabase(rawUser);
+      loggedUser = result.profile;
+    }
 
     setIsLoading(false);
-    setSuccessMessage(
-      result.isSupabase
-        ? `Autenticado com sucesso! Perfil sincronizado no Supabase PostgreSQL.`
-        : `Autenticado com sucesso! Entrando no sistema...`
-    );
+    setSuccessMessage(`Autenticado com sucesso! Entrando no sistema...`);
 
     setTimeout(() => {
       onLogin(loggedUser);
-    }, 600);
+    }, 500);
   };
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
@@ -146,21 +139,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
     setTimeout(() => {
       onLogin(newUser);
     }, 600);
-  };
-
-  const handleSelectDemoAccount = async (acc: UserProfile) => {
-    setEmail(acc.email);
-    setPassword("••••••••");
-    setIsLoading(true);
-    setSuccessMessage(`Conectando como ${acc.name}...`);
-
-    const result = await syncUserProfileWithSupabase(acc);
-    setIsLoading(false);
-
-    setSuccessMessage(`Bem-vindo, ${result.profile.name}!`);
-    setTimeout(() => {
-      onLogin(result.profile);
-    }, 400);
   };
 
   return (
@@ -374,38 +352,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
             </button>
           </form>
         )}
-
-        {/* Demo Accounts Quick Access */}
-        <div className="pt-2 border-t border-slate-800/80 space-y-2">
-          <p className="text-[11px] font-bold text-slate-400 text-center uppercase tracking-wider">
-            Acesso Rápido para Testes
-          </p>
-          <div className="grid grid-cols-1 gap-2">
-            {DEMO_ACCOUNTS.map((acc) => (
-              <button
-                key={acc.id}
-                type="button"
-                onClick={() => handleSelectDemoAccount(acc)}
-                className="flex items-center justify-between bg-slate-950 hover:bg-slate-800/80 border border-slate-800 rounded-xl p-2.5 text-left transition cursor-pointer group"
-              >
-                <div className="flex items-center space-x-2.5">
-                  <div
-                    className={`w-7 h-7 rounded-lg bg-gradient-to-tr ${acc.avatarColor} flex items-center justify-center text-white font-bold text-xs shrink-0`}
-                  >
-                    {acc.name.substring(0, 2).toUpperCase()}
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-white group-hover:text-indigo-300">
-                      {acc.name}
-                    </p>
-                    <p className="text-[10px] text-slate-400">{acc.role}</p>
-                  </div>
-                </div>
-                <UserCheck className="w-4 h-4 text-slate-500 group-hover:text-indigo-400 shrink-0" />
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   );

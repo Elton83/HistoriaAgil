@@ -326,6 +326,48 @@ export async function syncUserProfileWithSupabase(
 }
 
 /**
+ * Fetch a single user profile by email from Supabase
+ */
+export async function fetchProfileByEmailFromSupabase(
+  email: string
+): Promise<{ profile: UserProfile | null; isSupabase: boolean; error?: string }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return { profile: null, isSupabase: false };
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("email", email.trim().toLowerCase())
+      .maybeSingle();
+
+    if (error) {
+      console.warn("[Supabase] Error fetching profile by email:", error.message);
+      return { profile: null, isSupabase: true, error: error.message };
+    }
+
+    if (!data) {
+      return { profile: null, isSupabase: true };
+    }
+
+    const profile: UserProfile = {
+      id: data.id,
+      name: data.name,
+      email: data.email,
+      role: data.role,
+      avatarColor: data.avatar_color,
+    };
+
+    return { profile, isSupabase: true };
+  } catch (err: any) {
+    console.warn("[Supabase] Error fetching profile by email:", err);
+    return { profile: null, isSupabase: true, error: err.message };
+  }
+}
+
+/**
  * Fetch all registered profiles from Supabase for RBAC Admin Panel
  */
 export async function fetchAllProfilesFromSupabase(): Promise<{
