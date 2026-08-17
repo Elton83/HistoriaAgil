@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { UserStory } from "../types";
+import { UserStory, LLMProvider, AVAILABLE_MODELS } from "../types";
 import { parseUploadedFile, parseRecordedVideoBlob, ParsedFileInfo } from "../utils/fileReader";
 import { validateUserStory } from "../utils/storyValidator";
 import { generateStoryPDF } from "../utils/pdfExporter";
@@ -35,6 +35,9 @@ import {
   Video,
   FolderArchive,
   Camera,
+  Bot,
+  Cpu,
+  Zap,
 } from "lucide-react";
 
 interface GeneratorStudioProps {
@@ -46,13 +49,18 @@ interface GeneratorStudioProps {
     epicName: string,
     requester: string,
     extraInstructions: string,
-    images?: Array<{ mimeType: string; base64Data: string; fileName?: string }>
+    images?: Array<{ mimeType: string; base64Data: string; fileName?: string }>,
+    provider?: LLMProvider,
+    model?: string
   ) => Promise<void>;
   isGenerating: boolean;
   onSaveToBacklog: (story: UserStory) => void;
   onOpenRefineModal: () => void;
   onOpenAuditModal: () => void;
   onResetSystem?: () => void;
+  selectedProvider?: LLMProvider;
+  selectedModel?: string;
+  onSelectModel?: (provider: LLMProvider, model: string) => void;
 }
 
 export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
@@ -64,7 +72,35 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
   onOpenRefineModal,
   onOpenAuditModal,
   onResetSystem,
+  selectedProvider = "gemini",
+  selectedModel = "gemini-2.5-flash",
+  onSelectModel,
 }) => {
+  // Local or controlled model selection
+  const [providerState, setProviderState] = useState<LLMProvider>(selectedProvider);
+  const [modelState, setModelState] = useState<string>(selectedModel);
+
+  const activeProvider = onSelectModel ? selectedProvider : providerState;
+  const activeModel = onSelectModel ? selectedModel : modelState;
+
+  const handleProviderChange = (p: LLMProvider) => {
+    const defaultModelForProvider = p === "gemini" ? "gemini-2.5-flash" : "gpt-4o-mini";
+    if (onSelectModel) {
+      onSelectModel(p, defaultModelForProvider);
+    } else {
+      setProviderState(p);
+      setModelState(defaultModelForProvider);
+    }
+  };
+
+  const handleModelChange = (m: string) => {
+    if (onSelectModel) {
+      onSelectModel(activeProvider, m);
+    } else {
+      setModelState(m);
+    }
+  };
+
   // Input state
   const [contextText, setContextText] = useState("");
   const [projectName, setProjectName] = useState("");
@@ -199,7 +235,16 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
       ];
     }
 
-    await onGenerateStory(contextText, projectName, epicName, requester, extraInstructions, imagesPayload);
+    await onGenerateStory(
+      contextText,
+      projectName,
+      epicName,
+      requester,
+      extraInstructions,
+      imagesPayload,
+      activeProvider,
+      activeModel
+    );
   };
 
   // Re-run story validation tests on demand and trigger toast feedback
@@ -427,6 +472,90 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
           </div>
 
           <form onSubmit={handleGenerate} className="space-y-3.5">
+            {/* AI Engine & LLM Model Selector */}
+            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-semibold text-slate-200 flex items-center space-x-1.5">
+                  <Bot className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Motor de IA Vinculado (LLM)</span>
+                </label>
+                <span className="text-[10px] text-slate-400">
+                  {activeProvider === "gemini" ? "Google GenAI" : "OpenAI ChatGPT"}
+                </span>
+              </div>
+
+              {/* Provider Tabs */}
+              <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-900 border border-slate-800 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => handleProviderChange("gemini")}
+                  className={`py-1.5 px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center space-x-2 transition cursor-pointer ${
+                    activeProvider === "gemini"
+                      ? "bg-indigo-600 text-white shadow-md"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Google Gemini</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleProviderChange("openai")}
+                  className={`py-1.5 px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center space-x-2 transition cursor-pointer ${
+                    activeProvider === "openai"
+                      ? "bg-emerald-600 text-white shadow-md"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+                  }`}
+                >
+                  <Bot className="w-3.5 h-3.5 text-emerald-300" />
+                  <span>ChatGPT (OpenAI)</span>
+                </button>
+              </div>
+
+              {/* Model Options for Active Provider */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5">
+                {AVAILABLE_MODELS.filter((m) => m.provider === activeProvider).map((modelOpt) => {
+                  const isSelected = activeModel === modelOpt.id;
+                  return (
+                    <button
+                      key={modelOpt.id}
+                      type="button"
+                      onClick={() => handleModelChange(modelOpt.id)}
+                      className={`text-left p-2.5 rounded-xl border transition cursor-pointer flex flex-col justify-between ${
+                        isSelected
+                          ? activeProvider === "gemini"
+                            ? "bg-indigo-950/70 border-indigo-500/80 text-white shadow-sm ring-1 ring-indigo-500/50"
+                            : "bg-emerald-950/70 border-emerald-500/80 text-white shadow-sm ring-1 ring-emerald-500/50"
+                          : "bg-slate-900/60 border-slate-800/80 text-slate-400 hover:border-slate-700 hover:text-slate-200"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold text-slate-100 flex items-center space-x-1.5">
+                          <span>{modelOpt.name}</span>
+                        </span>
+                        {modelOpt.badge && (
+                          <span
+                            className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md ${
+                              isSelected
+                                ? activeProvider === "gemini"
+                                  ? "bg-indigo-500/30 text-indigo-200 border border-indigo-400/40"
+                                  : "bg-emerald-500/30 text-emerald-200 border border-emerald-400/40"
+                                : "bg-slate-800 text-slate-400"
+                            }`}
+                          >
+                            {modelOpt.badge}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-400 leading-snug line-clamp-2">
+                        {modelOpt.description}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Metadata Field: Nome do Projeto */}
             <div>
               <label className="block text-[11px] font-medium text-slate-300 mb-1">Nome do Projeto</label>
@@ -635,6 +764,21 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                   {currentStory.attachedFileName && (
                     <span className="bg-slate-950 text-slate-400 border border-slate-800 text-[10px] px-2.5 py-0.5 rounded-full truncate max-w-[180px] whitespace-nowrap">
                       📎 {currentStory.attachedFileName}
+                    </span>
+                  )}
+                  {currentStory.usedProvider && (
+                    <span
+                      className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border flex items-center space-x-1 whitespace-nowrap ${
+                        currentStory.usedProvider === "openai"
+                          ? "bg-emerald-950/80 text-emerald-300 border-emerald-800/80"
+                          : "bg-indigo-950/80 text-indigo-300 border-indigo-800/80"
+                      }`}
+                    >
+                      <Bot className="w-3 h-3" />
+                      <span>
+                        {currentStory.usedProvider === "openai" ? "OpenAI" : "Gemini"} •{" "}
+                        {currentStory.usedModel || "Default"}
+                      </span>
                     </span>
                   )}
                 </div>

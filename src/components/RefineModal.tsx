@@ -1,11 +1,14 @@
 import React, { useState } from "react";
-import { Sparkles, X, RefreshCw, Wand2, CheckCircle, AlertTriangle } from "lucide-react";
+import { Sparkles, X, RefreshCw, Wand2, CheckCircle, AlertTriangle, Bot } from "lucide-react";
+import { LLMProvider, AVAILABLE_MODELS } from "../types";
 
 interface RefineModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onRefine: (instruction: string) => Promise<void>;
+  onRefine: (instruction: string, provider?: LLMProvider, model?: string) => Promise<void>;
   isRefining: boolean;
+  defaultProvider?: LLMProvider;
+  defaultModel?: string;
 }
 
 const QUICK_INSTRUCTIONS = [
@@ -21,15 +24,24 @@ export const RefineModal: React.FC<RefineModalProps> = ({
   onClose,
   onRefine,
   isRefining,
+  defaultProvider = "gemini",
+  defaultModel = "gemini-2.5-flash",
 }) => {
   const [instruction, setInstruction] = useState("");
+  const [provider, setProvider] = useState<LLMProvider>(defaultProvider);
+  const [model, setModel] = useState<string>(defaultModel);
 
   if (!isOpen) return null;
+
+  const handleProviderChange = (newProvider: LLMProvider) => {
+    setProvider(newProvider);
+    setModel(newProvider === "gemini" ? "gemini-2.5-flash" : "gpt-4o-mini");
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!instruction.trim() || isRefining) return;
-    onRefine(instruction);
+    onRefine(instruction, provider, model);
   };
 
   return (
@@ -59,6 +71,42 @@ export const RefineModal: React.FC<RefineModalProps> = ({
 
         {/* Modal Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* Engine Selector */}
+          <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-2">
+            <div className="flex items-center justify-between text-xs text-slate-300 font-semibold">
+              <span className="flex items-center space-x-1.5">
+                <Bot className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Motor de Refinamento</span>
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => handleProviderChange("gemini")}
+                className={`py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center space-x-1.5 transition ${
+                  provider === "gemini"
+                    ? "bg-indigo-600 text-white shadow"
+                    : "bg-slate-900 text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <Sparkles className="w-3 h-3 text-amber-300" />
+                <span>Google Gemini</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleProviderChange("openai")}
+                className={`py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center space-x-1.5 transition ${
+                  provider === "openai"
+                    ? "bg-emerald-600 text-white shadow"
+                    : "bg-slate-900 text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <Bot className="w-3 h-3 text-emerald-300" />
+                <span>ChatGPT (OpenAI)</span>
+              </button>
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs font-medium text-slate-300 mb-2">
               Sugestões Rápidas de Refinamento:
@@ -106,7 +154,7 @@ export const RefineModal: React.FC<RefineModalProps> = ({
             <button
               type="submit"
               disabled={!instruction.trim() || isRefining}
-              className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 transition"
+              className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 transition cursor-pointer"
             >
               {isRefining ? (
                 <>
@@ -126,3 +174,4 @@ export const RefineModal: React.FC<RefineModalProps> = ({
     </div>
   );
 };
+

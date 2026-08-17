@@ -11,7 +11,7 @@ import { InvestAuditModal } from "./components/InvestAuditModal";
 import { MethodologyGuideModal } from "./components/MethodologyGuideModal";
 import { AuthModal, UserProfile } from "./components/AuthModal";
 import { SupabaseModal } from "./components/SupabaseModal";
-import { UserStory, StoryStatus, InvestAudit } from "./types";
+import { UserStory, StoryStatus, InvestAudit, LLMProvider } from "./types";
 import { INITIAL_SAMPLE_STORY } from "./data/presets";
 import { validateUserStory } from "./utils/storyValidator";
 import { isSupabaseConfigured } from "./lib/supabase";
@@ -114,6 +114,15 @@ export default function App() {
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
 
+  // Active AI Provider & Model State (Gemini vs ChatGPT)
+  const [selectedProvider, setSelectedProvider] = useState<LLMProvider>("gemini");
+  const [selectedModel, setSelectedModel] = useState<string>("gemini-2.5-flash");
+
+  const handleSelectModel = (provider: LLMProvider, model: string) => {
+    setSelectedProvider(provider);
+    setSelectedModel(model);
+  };
+
   // Active audit results
   const [currentAudit, setCurrentAudit] = useState<InvestAudit | null>(null);
 
@@ -181,9 +190,14 @@ export default function App() {
     epicName: string,
     requester: string,
     extraInstructions: string,
-    images?: Array<{ mimeType: string; base64Data: string; fileName?: string }>
+    images?: Array<{ mimeType: string; base64Data: string; fileName?: string }>,
+    provider?: LLMProvider,
+    model?: string
   ) => {
     setIsGenerating(true);
+    const activeProvider = provider || selectedProvider;
+    const activeModel = model || selectedModel;
+
     try {
       const response = await fetch("/api/generate-story", {
         method: "POST",
@@ -195,6 +209,8 @@ export default function App() {
           requester,
           extraInstructions,
           images,
+          provider: activeProvider,
+          model: activeModel,
         }),
       });
 
@@ -224,15 +240,20 @@ export default function App() {
         status: "draft",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        tags: [projectName || "Requisito", "IA"].filter(Boolean),
+        tags: [projectName || "Requisito", activeProvider === "openai" ? "ChatGPT" : "Gemini"].filter(Boolean),
         attachedFileName: images && images[0]?.fileName ? images[0].fileName : undefined,
+        usedProvider: data.usedProvider || activeProvider,
+        usedModel: data.usedModel || activeModel,
       };
 
       const validationReport = validateUserStory(rawStory);
       const newStory: UserStory = { ...rawStory, validationReport };
 
       setCurrentStory(newStory);
-      showToast("História de usuário gerada com sucesso!", "success");
+      showToast(
+        `História gerada via ${activeProvider === "openai" ? "ChatGPT" : "Gemini"} (${data.usedModel || activeModel})!`,
+        "success"
+      );
     } catch (error: any) {
       console.error("Error generating story:", error);
       showToast(error?.message || "Erro ao gerar história via servidor de IA.", "error");
@@ -242,9 +263,16 @@ export default function App() {
   };
 
   // Refine current story via Backend API
-  const handleRefineStory = async (refinementInstruction: string) => {
+  const handleRefineStory = async (
+    refinementInstruction: string,
+    provider?: LLMProvider,
+    model?: string
+  ) => {
     if (!currentStory) return;
     setIsRefining(true);
+    const activeProvider = provider || selectedProvider;
+    const activeModel = model || selectedModel;
+
     try {
       const response = await fetch("/api/refine-story", {
         method: "POST",
@@ -252,6 +280,8 @@ export default function App() {
         body: JSON.stringify({
           currentStoryMarkdown: currentStory.rawMarkdown,
           refinementInstruction,
+          provider: activeProvider,
+          model: activeModel,
         }),
       });
 
@@ -272,6 +302,8 @@ export default function App() {
         bddScenarios: structured.bddScenarios || currentStory.bddScenarios,
         rawMarkdown: data.rawMarkdown,
         updatedAt: new Date().toISOString(),
+        usedProvider: data.usedProvider || activeProvider,
+        usedModel: data.usedModel || activeModel,
       };
 
       const updatedStory: UserStory = {
@@ -281,7 +313,10 @@ export default function App() {
 
       setCurrentStory(updatedStory);
       setIsRefineModalOpen(false);
-      showToast("História refinada com sucesso!", "success");
+      showToast(
+        `História refinada via ${activeProvider === "openai" ? "ChatGPT" : "Gemini"}!`,
+        "success"
+      );
     } catch (error) {
       console.error("Error refining story:", error);
       showToast("Não foi possível refinar a história.", "error");
@@ -299,7 +334,11 @@ export default function App() {
       const response = await fetch("/api/audit-invest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storyMarkdown: currentStory.rawMarkdown }),
+        body: JSON.stringify({
+          storyMarkdown: currentStory.rawMarkdown,
+          provider: selectedProvider,
+          model: selectedModel,
+        }),
       });
 
       if (!response.ok) {
@@ -322,6 +361,7 @@ export default function App() {
       setIsAuditing(false);
     }
   };
+
 
   // Save story to Kanban backlog (and Supabase)
   const handleSaveToBacklog = async (storyToSave: UserStory) => {
@@ -592,9 +632,12 @@ export default function App() {
               onGenerateStory={handleGenerateStory}
               isGenerating={isGenerating}
               onSaveToBacklog={handleSaveToBacklog}
-              onOpenRefineModal={() => setIsRefineModalOpen(false)}
+              onOpenRefineModal={() => setIsRefineModalOpen(true)}
               onOpenAuditModal={handleOpenAuditModal}
               onResetSystem={handleResetSystem}
+              selectedProvider={selectedProvider}
+              selectedModel={selectedModel}
+              onSelectModel={handleSelectModel}
             />
           )}
 
@@ -615,6 +658,7 @@ export default function App() {
             <HomologationPipelineView
               stories={stories}
               onUpdateStory={handleUpdateStory}
+              onDeleteStory={handleDeleteStory}
               onSelectStoryForGenerator={(story) => {
                 setCurrentStory(story);
                 setActiveTab("generator");
@@ -661,6 +705,8 @@ export default function App() {
         onClose={() => setIsRefineModalOpen(false)}
         onRefine={handleRefineStory}
         isRefining={isRefining}
+        defaultProvider={selectedProvider}
+        defaultModel={selectedModel}
       />
 
       <InvestAuditModal

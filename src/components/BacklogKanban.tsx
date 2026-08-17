@@ -15,7 +15,8 @@ import {
   Download,
   ShieldCheck,
   Layers,
-  FileDown
+  FileDown,
+  Bot
 } from "lucide-react";
 
 interface BacklogKanbanProps {
@@ -222,6 +223,22 @@ export const BacklogKanban: React.FC<BacklogKanbanProps> = ({
                         <p className="text-[11px] text-slate-400 mt-1.5 line-clamp-2">
                           Como <span className="text-slate-300">{story.story.role}</span>...
                         </p>
+
+                        {/* LLM provider tag if available */}
+                        {story.usedProvider && (
+                          <div className="mt-2 flex items-center">
+                            <span
+                              className={`text-[9px] font-bold px-2 py-0.5 rounded-md border flex items-center space-x-1 ${
+                                story.usedProvider === "openai"
+                                  ? "bg-emerald-950/70 text-emerald-300 border-emerald-800/60"
+                                  : "bg-indigo-950/70 text-indigo-300 border-indigo-800/60"
+                              }`}
+                            >
+                              <Bot className="w-2.5 h-2.5" />
+                              <span>{story.usedProvider === "openai" ? "ChatGPT" : "Gemini"}</span>
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Footer Metrics */}

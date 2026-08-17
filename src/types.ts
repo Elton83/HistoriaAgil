@@ -96,6 +96,70 @@ export interface UserStory {
   validationReport?: ValidationReport;
   attachedFileName?: string;
   homologationChecklist?: HomologationItem[];
+  usedProvider?: LLMProvider;
+  usedModel?: string;
+}
+
+export type LLMProvider = 'gemini' | 'openai';
+
+export interface LLMModelOption {
+  id: string;
+  name: string;
+  provider: LLMProvider;
+  providerLabel: string;
+  description: string;
+  badge?: string;
+  isVisionCapable: boolean;
+}
+
+export const AVAILABLE_MODELS: LLMModelOption[] = [
+  {
+    id: "gemini-2.5-flash",
+    name: "Gemini 2.5 Flash",
+    provider: "gemini",
+    providerLabel: "Google AI",
+    description: "Altíssima velocidade, excelente em contexto ágil e análise de imagens anexadas",
+    badge: "Recomendado",
+    isVisionCapable: true,
+  },
+  {
+    id: "gemini-2.5-pro",
+    name: "Gemini 2.5 Pro",
+    provider: "gemini",
+    providerLabel: "Google AI",
+    description: "Raciocínio avançado e decomposição de regras de negócio altamente complexas",
+    badge: "Raciocínio Pro",
+    isVisionCapable: true,
+  },
+  {
+    id: "gpt-4o-mini",
+    name: "ChatGPT - GPT-4o Mini",
+    provider: "openai",
+    providerLabel: "OpenAI",
+    description: "Rápido, conciso e com excelente escrita para critérios e cenários Gherkin",
+    badge: "OpenAI Ágil",
+    isVisionCapable: true,
+  },
+  {
+    id: "gpt-4o",
+    name: "ChatGPT - GPT-4o",
+    provider: "openai",
+    providerLabel: "OpenAI",
+    description: "Modelo topo de linha da OpenAI, precisão máxima para regras corporativas e BDD",
+    badge: "OpenAI Flagship",
+    isVisionCapable: true,
+  },
+];
+
+export interface ProvidersStatus {
+  gemini: {
+    available: boolean;
+    models: string[];
+  };
+  openai: {
+    available: boolean;
+    models: string[];
+  };
 }
 
 export interface ContextPreset {

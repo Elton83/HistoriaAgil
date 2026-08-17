@@ -1,7 +1,8 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
+import OpenAI from "openai";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -25,6 +26,17 @@ const getGeminiClient = () => {
         "User-Agent": "aistudio-build",
       },
     },
+  });
+};
+
+// Initialize OpenAI Client
+const getOpenAIClient = () => {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey || apiKey === "your-openai-api-key") {
+    return null;
+  }
+  return new OpenAI({
+    apiKey: apiKey,
   });
 };
 
@@ -361,90 +373,197 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// Endpoint to Generate User Story from Context
+// Endpoint to check active AI Providers Status
+app.get("/api/providers-status", (req, res) => {
+  const geminiAvailable = !!process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "your-gemini-api-key";
+  const openaiAvailable = !!process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== "your-openai-api-key";
+
+  res.json({
+    gemini: {
+      available: geminiAvailable,
+      models: ["gemini-2.5-flash", "gemini-2.5-pro"],
+    },
+    openai: {
+      available: openaiAvailable,
+      models: ["gpt-4o-mini", "gpt-4o"],
+    },
+  });
+});
+
+// Endpoint to Generate User Story from Context (Gemini or OpenAI / ChatGPT)
 app.post("/api/generate-story", async (req, res) => {
-  const { contextText, projectName, epicName, requester, extraInstructions, images } = req.body;
+  const {
+    contextText,
+    projectName,
+    epicName,
+    requester,
+    extraInstructions,
+    images,
+    provider = "gemini",
+    model = "gemini-2.5-flash",
+  } = req.body;
 
   if (!contextText || typeof contextText !== "string") {
     return res.status(400).json({ error: "Contexto de negócio não fornecido." });
   }
 
-  const ai = getGeminiClient();
+  let fullPrompt = `CONTEXTO DO REQUISITO FORNECIDO:\n\n${contextText}\n\n`;
+  if (projectName) fullPrompt += `Projeto: ${projectName}\n`;
+  if (epicName) fullPrompt += `Épico Relacionado: ${epicName}\n`;
+  if (requester) fullPrompt += `Demandante / Solicitante: ${requester}\n`;
+  if (extraInstructions) fullPrompt += `Instruções Adicionais de Foco: ${extraInstructions}\n`;
 
-  if (!ai) {
-    console.warn("GEMINI_API_KEY ausente/inválida. Utilizando gerador local inteligente.");
-    const fallback = generateFallbackStory(contextText, projectName, epicName, requester, extraInstructions);
-    return res.json(fallback);
-  }
+  fullPrompt += `\nLembre-se de seguir rigorosamente todas as regras e o formato exigido de resposta.`;
 
-  try {
-    let fullPrompt = `CONTEXTO DO REQUISITO FORNECIDO:\n\n${contextText}\n\n`;
-    if (projectName) fullPrompt += `Projeto: ${projectName}\n`;
-    if (epicName) fullPrompt += `Épico Relacionado: ${epicName}\n`;
-    if (requester) fullPrompt += `Demandante / Solicitante: ${requester}\n`;
-    if (extraInstructions) fullPrompt += `Instruções Adicionais de Foco: ${extraInstructions}\n`;
+  // Option 1: OpenAI (ChatGPT)
+  if (provider === "openai") {
+    const openai = getOpenAIClient();
+    if (openai) {
+      try {
+        const targetModel = model.startsWith("gpt-") ? model : "gpt-4o-mini";
+        const messages: any[] = [
+          { role: "system", content: SYSTEM_INSTRUCTION_PROMPT },
+        ];
 
-    fullPrompt += `\nLembre-se de seguir rigorosamente todas as regras e o formato exigido de resposta.`;
-
-    const parts: any[] = [{ text: fullPrompt }];
-
-    if (Array.isArray(images) && images.length > 0) {
-      images.forEach((img: { mimeType?: string; base64Data?: string }) => {
-        if (img.base64Data && img.mimeType) {
-          let mime = img.mimeType;
-          if (mime === "image/jpg" || mime === "image/pjpeg") mime = "image/jpeg";
-          const cleanBase64 = img.base64Data.replace(/^data:[^;]+;base64,/, "").trim();
-
-          parts.unshift({
-            inlineData: {
-              mimeType: mime,
-              data: cleanBase64,
-            },
+        if (Array.isArray(images) && images.length > 0) {
+          const userContent: any[] = [{ type: "text", text: fullPrompt }];
+          images.forEach((img: { mimeType?: string; base64Data?: string }) => {
+            if (img.base64Data && img.mimeType) {
+              let mime = img.mimeType;
+              if (mime === "image/jpg" || mime === "image/pjpeg") mime = "image/jpeg";
+              const cleanBase64 = img.base64Data.replace(/^data:[^;]+;base64,/, "").trim();
+              userContent.push({
+                type: "image_url",
+                image_url: {
+                  url: `data:${mime};base64,${cleanBase64}`,
+                },
+              });
+            }
           });
+          messages.push({ role: "user", content: userContent });
+        } else {
+          messages.push({ role: "user", content: fullPrompt });
         }
-      });
+
+        const completion = await openai.chat.completions.create({
+          model: targetModel,
+          messages,
+          temperature: 0.2,
+        });
+
+        const markdownOutput = completion.choices[0]?.message?.content || "";
+        const structuredOutput = parseMarkdownToStructured(markdownOutput);
+
+        return res.json({
+          rawMarkdown: markdownOutput,
+          structured: structuredOutput,
+          usedProvider: "openai",
+          usedModel: targetModel,
+        });
+      } catch (error: any) {
+        console.warn("Falha na chamada OpenAI, tentando contingência:", error?.message || error);
+      }
+    } else {
+      console.warn("OPENAI_API_KEY não configurada. Tentando fallback.");
     }
-
-    const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
-      contents: { parts },
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION_PROMPT,
-        temperature: 0.2,
-      },
-    });
-
-    const markdownOutput = response.text || "";
-    const structuredOutput = parseMarkdownToStructured(markdownOutput);
-
-    return res.json({
-      rawMarkdown: markdownOutput,
-      structured: structuredOutput,
-    });
-  } catch (error: any) {
-    console.warn("Falha na chamada da API Gemini, utilizando gerador de contingência:", error?.message || error);
-    const fallback = generateFallbackStory(contextText, projectName, epicName, requester, extraInstructions);
-    return res.json(fallback);
   }
+
+  // Option 2: Google Gemini (Default or Secondary)
+  const ai = getGeminiClient();
+  if (ai) {
+    try {
+      const targetModel = model.startsWith("gemini-") ? model : "gemini-2.5-flash";
+      const parts: any[] = [{ text: fullPrompt }];
+
+      if (Array.isArray(images) && images.length > 0) {
+        images.forEach((img: { mimeType?: string; base64Data?: string }) => {
+          if (img.base64Data && img.mimeType) {
+            let mime = img.mimeType;
+            if (mime === "image/jpg" || mime === "image/pjpeg") mime = "image/jpeg";
+            const cleanBase64 = img.base64Data.replace(/^data:[^;]+;base64,/, "").trim();
+
+            parts.unshift({
+              inlineData: {
+                mimeType: mime,
+                data: cleanBase64,
+              },
+            });
+          }
+        });
+      }
+
+      const response = await ai.models.generateContent({
+        model: targetModel,
+        contents: { parts },
+        config: {
+          systemInstruction: SYSTEM_INSTRUCTION_PROMPT,
+          temperature: 0.2,
+        },
+      });
+
+      const markdownOutput = response.text || "";
+      const structuredOutput = parseMarkdownToStructured(markdownOutput);
+
+      return res.json({
+        rawMarkdown: markdownOutput,
+        structured: structuredOutput,
+        usedProvider: "gemini",
+        usedModel: targetModel,
+      });
+    } catch (error: any) {
+      console.warn("Falha na chamada da API Gemini, utilizando gerador de contingência:", error?.message || error);
+    }
+  }
+
+  // Option 3: If OpenAI was not initially requested and Gemini failed, check if OpenAI is available
+  if (provider !== "openai") {
+    const openai = getOpenAIClient();
+    if (openai) {
+      try {
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: SYSTEM_INSTRUCTION_PROMPT },
+            { role: "user", content: fullPrompt },
+          ],
+          temperature: 0.2,
+        });
+        const markdownOutput = completion.choices[0]?.message?.content || "";
+        return res.json({
+          rawMarkdown: markdownOutput,
+          structured: parseMarkdownToStructured(markdownOutput),
+          usedProvider: "openai",
+          usedModel: "gpt-4o-mini",
+        });
+      } catch (err) {
+        // Continue to fallback
+      }
+    }
+  }
+
+  // Fallback intelligent story generator
+  const fallback = generateFallbackStory(contextText, projectName, epicName, requester, extraInstructions);
+  return res.json({
+    ...fallback,
+    usedProvider: "fallback",
+    usedModel: "local-heuristic",
+  });
 });
 
 // Endpoint to Refine or Edit Story with AI
 app.post("/api/refine-story", async (req, res) => {
-  const { currentStoryMarkdown, refinementInstruction } = req.body;
+  const {
+    currentStoryMarkdown,
+    refinementInstruction,
+    provider = "gemini",
+    model = "gemini-2.5-flash",
+  } = req.body;
 
   if (!currentStoryMarkdown || !refinementInstruction) {
     return res.status(400).json({ error: "História atual ou instrução de refinamento ausente." });
   }
 
-  const ai = getGeminiClient();
-
-  if (!ai) {
-    const fallback = refineFallbackStory(currentStoryMarkdown, refinementInstruction);
-    return res.json(fallback);
-  }
-
-  try {
-    const prompt = `
+  const prompt = `
 HISTÓRIA DE USUÁRIO ATUAL:
 ${currentStoryMarkdown}
 
@@ -460,45 +579,77 @@ Reescreva a História de Usuário incorporando exatamente esta melhoria ou ajust
 # Cenários BDD
 `;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
-      contents: prompt,
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION_PROMPT,
-        temperature: 0.2,
-      },
-    });
+  // Try OpenAI if selected
+  if (provider === "openai") {
+    const openai = getOpenAIClient();
+    if (openai) {
+      try {
+        const targetModel = model.startsWith("gpt-") ? model : "gpt-4o-mini";
+        const completion = await openai.chat.completions.create({
+          model: targetModel,
+          messages: [
+            { role: "system", content: SYSTEM_INSTRUCTION_PROMPT },
+            { role: "user", content: prompt },
+          ],
+          temperature: 0.2,
+        });
 
-    const markdownOutput = response.text || "";
-    const structuredOutput = parseMarkdownToStructured(markdownOutput);
+        const markdownOutput = completion.choices[0]?.message?.content || "";
+        const structuredOutput = parseMarkdownToStructured(markdownOutput);
 
-    return res.json({
-      rawMarkdown: markdownOutput,
-      structured: structuredOutput,
-    });
-  } catch (error: any) {
-    console.warn("Falha no refinamento Gemini, executando contingência:", error?.message || error);
-    const fallback = refineFallbackStory(currentStoryMarkdown, refinementInstruction);
-    return res.json(fallback);
+        return res.json({
+          rawMarkdown: markdownOutput,
+          structured: structuredOutput,
+          usedProvider: "openai",
+          usedModel: targetModel,
+        });
+      } catch (error: any) {
+        console.warn("Falha no refinamento OpenAI:", error?.message || error);
+      }
+    }
   }
+
+  // Try Gemini
+  const ai = getGeminiClient();
+  if (ai) {
+    try {
+      const targetModel = model.startsWith("gemini-") ? model : "gemini-2.5-flash";
+      const response = await ai.models.generateContent({
+        model: targetModel,
+        contents: prompt,
+        config: {
+          systemInstruction: SYSTEM_INSTRUCTION_PROMPT,
+          temperature: 0.2,
+        },
+      });
+
+      const markdownOutput = response.text || "";
+      const structuredOutput = parseMarkdownToStructured(markdownOutput);
+
+      return res.json({
+        rawMarkdown: markdownOutput,
+        structured: structuredOutput,
+        usedProvider: "gemini",
+        usedModel: targetModel,
+      });
+    } catch (error: any) {
+      console.warn("Falha no refinamento Gemini, executando contingência:", error?.message || error);
+    }
+  }
+
+  const fallback = refineFallbackStory(currentStoryMarkdown, refinementInstruction);
+  return res.json(fallback);
 });
 
 // Endpoint for INVEST criteria & Quality Audit
 app.post("/api/audit-invest", async (req, res) => {
-  const { storyMarkdown } = req.body;
+  const { storyMarkdown, provider = "gemini", model = "gemini-2.5-flash" } = req.body;
 
   if (!storyMarkdown) {
     return res.status(400).json({ error: "História de usuário ausente." });
   }
 
-  const ai = getGeminiClient();
-
-  if (!ai) {
-    return res.json(auditFallbackInvest(storyMarkdown));
-  }
-
-  try {
-    const prompt = `
+  const prompt = `
 Avalie a seguinte História de Usuário segundo o acrônimo INVEST do Scrum / Requisitos Ágeis:
 - **I**ndependent (Independente)
 - **N**egotiable (Negociável)
@@ -517,21 +668,56 @@ Forneça um relatório sucinto em JSON com os seguintes campos:
 - estimatedStoryPoints: objeto { points: number, justification: string }
 `;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        temperature: 0.1,
-      },
-    });
+  // Try OpenAI if selected
+  if (provider === "openai") {
+    const openai = getOpenAIClient();
+    if (openai) {
+      try {
+        const targetModel = model.startsWith("gpt-") ? model : "gpt-4o-mini";
+        const completion = await openai.chat.completions.create({
+          model: targetModel,
+          messages: [
+            {
+              role: "system",
+              content: "Você é um auditor de requisitos ágeis especialista no acrônimo INVEST. Responda em JSON.",
+            },
+            { role: "user", content: prompt },
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.1,
+        });
 
-    return res.json(JSON.parse(response.text || "{}"));
-  } catch (error: any) {
-    console.warn("Falha na auditoria INVEST Gemini, gerando relatório de contingência:", error?.message || error);
-    return res.json(auditFallbackInvest(storyMarkdown));
+        const text = completion.choices[0]?.message?.content || "{}";
+        return res.json(JSON.parse(text));
+      } catch (error: any) {
+        console.warn("Falha no audit INVEST OpenAI:", error?.message || error);
+      }
+    }
   }
+
+  // Try Gemini
+  const ai = getGeminiClient();
+  if (ai) {
+    try {
+      const targetModel = model.startsWith("gemini-") ? model : "gemini-2.5-flash";
+      const response = await ai.models.generateContent({
+        model: targetModel,
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          temperature: 0.1,
+        },
+      });
+
+      return res.json(JSON.parse(response.text || "{}"));
+    } catch (error: any) {
+      console.warn("Falha na auditoria INVEST Gemini, gerando relatório de contingência:", error?.message || error);
+    }
+  }
+
+  return res.json(auditFallbackInvest(storyMarkdown));
 });
+
 
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
