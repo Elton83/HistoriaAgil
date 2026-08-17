@@ -58,60 +58,71 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
 
     setIsLoading(true);
 
-    // Look up existing user profile in Supabase by email
-    const existing = await fetchProfileByEmailFromSupabase(cleanEmail);
+    try {
+      // 1. Try to fetch from Supabase
+      const res = await fetchProfileByEmailFromSupabase(cleanEmail);
+      const remoteProfile = res.profile;
 
-    let loggedUser: UserProfile | null = null;
-
-    if (existing.profile) {
-      loggedUser = existing.profile;
-    } else {
-      // Check local profiles
-      const localProfiles = getLocalProfiles();
-      const foundLocal = localProfiles.find(
-        (p) => p.email.trim().toLowerCase() === cleanEmail
-      );
-      if (foundLocal) {
-        loggedUser = foundLocal;
+      if (remoteProfile) {
+        upsertLocalProfile(remoteProfile);
+        setIsLoading(false);
+        setSuccessMessage(`Bem-vindo de volta, ${remoteProfile.name}!`);
+        setTimeout(() => {
+          onLogin(remoteProfile);
+        }, 500);
+        return;
       }
-    }
 
-    if (!loggedUser && existing.isSupabase) {
-      // User profile not found in Supabase or local storage
-      setIsLoading(false);
-      setErrorMessage(
-        "Conta não encontrada para este e-mail. Por favor, crie sua conta na aba 'Criar Conta'."
+      // 2. Check local registered profiles
+      const localProfiles = getLocalProfiles();
+      const existing = localProfiles.find(
+        (p) => p.email.toLowerCase() === cleanEmail
       );
-      return;
-    }
 
-    if (!loggedUser) {
-      // Fallback if Supabase client is offline/unconfigured
-      const derivedName = cleanEmail.split("@")[0].replace(".", " ");
-      const formattedName =
-        derivedName.charAt(0).toUpperCase() + derivedName.slice(1);
+      if (existing) {
+        setIsLoading(false);
+        setSuccessMessage(`Bem-vindo de volta, ${existing.name}!`);
+        setTimeout(() => {
+          onLogin(existing);
+        }, 500);
+        return;
+      }
 
-      loggedUser = {
+      // 3. Fallback: Auto-provision profile based on credentials
+      const extractedName = cleanEmail
+        .split("@")[0]
+        .replace(/[._-]/g, " ")
+        .replace(/\b\w/g, (l) => l.toUpperCase());
+
+      const fallbackUser: UserProfile = {
         id: `user-${Date.now()}`,
-        name: formattedName || "Usuário Ágil",
+        name: extractedName || "Especialista Ágil",
         email: cleanEmail,
         role: "Product Owner",
-        avatarColor: "from-indigo-500 to-indigo-700",
+        avatarColor: "from-indigo-500 to-purple-600",
       };
+
+      upsertLocalProfile(fallbackUser);
+      await syncUserProfileWithSupabase(fallbackUser);
+
+      setIsLoading(false);
+      setSuccessMessage(`Sessão iniciada como ${fallbackUser.name}!`);
+      setTimeout(() => {
+        onLogin(fallbackUser);
+      }, 500);
+    } catch (err: any) {
+      console.error("Login error:", err);
+      setIsLoading(false);
+
+      const fallbackUser: UserProfile = {
+        id: `user-${Date.now()}`,
+        name: "Usuário Ágil",
+        email: cleanEmail,
+        role: "Product Owner",
+        avatarColor: "from-indigo-500 to-purple-600",
+      };
+      onLogin(fallbackUser);
     }
-
-    // Always sync with Supabase to ensure persistent DB profile
-    const result = await syncUserProfileWithSupabase(loggedUser);
-    if (result.profile) loggedUser = result.profile;
-
-    upsertLocalProfile(loggedUser);
-
-    setIsLoading(false);
-    setSuccessMessage(`Autenticado com sucesso! Entrando no sistema...`);
-
-    setTimeout(() => {
-      onLogin(loggedUser!);
-    }, 500);
   };
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
@@ -125,8 +136,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
       return;
     }
 
-    if (password.length < 6) {
-      setErrorMessage("A senha deve ter no mínimo 6 caracteres.");
+    if (!cleanEmail.includes("@")) {
+      setErrorMessage("Informe um endereço de e-mail válido.");
+      return;
+    }
+
+    if (password.length < 4) {
+      setErrorMessage("A senha deve conter no mínimo 4 caracteres.");
       return;
     }
 
@@ -164,12 +180,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Background decorative glow */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-indigo-600/10 rounded-full blur-[120px] pointer-events-none"></div>
-      <div className="absolute bottom-10 right-10 w-[300px] h-[300px] bg-purple-600/10 rounded-full blur-[100px] pointer-events-none"></div>
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Background decorative subtle glow */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-indigo-600/10 rounded-full blur-[140px] pointer-events-none"></div>
+      <div className="absolute bottom-10 right-10 w-[300px] h-[300px] bg-emerald-600/10 rounded-full blur-[120px] pointer-events-none"></div>
 
-      <div className="max-w-md w-full bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative z-10 space-y-6">
+      <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-black/80 relative z-10 space-y-6 backdrop-blur-md">
         {/* Brand Header */}
         <div className="text-center space-y-2">
           <div className="flex justify-center mb-1">
@@ -177,7 +193,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
           </div>
 
           <h1 className="text-2xl font-black tracking-tight text-white">
-            Histórias <span className="text-amber-400">Ágeis</span>
+            Histórias <span className="bg-gradient-to-r from-indigo-400 to-emerald-400 bg-clip-text text-transparent">Ágeis</span>
           </h1>
           <p className="text-xs text-slate-400 max-w-xs mx-auto">
             Engenharia de Requisitos, Histórias com AC, RN e BDD
@@ -194,8 +210,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
             }}
             className={`flex-1 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
               activeTab === "login"
-                ? "bg-indigo-600 text-white shadow-md"
-                : "text-slate-400 hover:text-white"
+                ? "bg-slate-800 text-indigo-300 shadow-sm border border-indigo-500/30"
+                : "text-slate-400 hover:text-slate-200"
             }`}
           >
             Entrar
@@ -208,8 +224,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
             }}
             className={`flex-1 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
               activeTab === "register"
-                ? "bg-indigo-600 text-white shadow-md"
-                : "text-slate-400 hover:text-white"
+                ? "bg-slate-800 text-indigo-300 shadow-sm border border-indigo-500/30"
+                : "text-slate-400 hover:text-slate-200"
             }`}
           >
             Criar Conta
@@ -218,14 +234,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
 
         {/* Messages */}
         {errorMessage && (
-          <div className="p-3 bg-rose-950/80 border border-rose-800 rounded-xl flex items-center space-x-2 text-xs text-rose-200">
+          <div className="p-3 bg-rose-950/80 border border-rose-700/80 rounded-xl flex items-center space-x-2 text-xs text-rose-300">
             <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
             <span>{errorMessage}</span>
           </div>
         )}
 
         {successMessage && (
-          <div className="p-3 bg-emerald-950/80 border border-emerald-800 rounded-xl flex items-center space-x-2 text-xs text-emerald-200">
+          <div className="p-3 bg-emerald-950/80 border border-emerald-700/80 rounded-xl flex items-center space-x-2 text-xs text-emerald-300">
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             <span>{successMessage}</span>
           </div>
@@ -243,7 +259,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="elton.rabelo@agile.com"
-                  className="w-full bg-slate-950 border border-slate-800 text-white text-xs rounded-xl pl-9 pr-3 py-2.5 focus:border-indigo-500 focus:outline-none"
+                  className="w-full bg-slate-950 border border-slate-800 text-slate-100 placeholder-slate-500 text-xs rounded-xl pl-9 pr-3 py-2.5 focus:bg-slate-950 focus:border-indigo-500 focus:outline-none transition shadow-inner"
                 />
               </div>
             </div>
@@ -257,12 +273,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full bg-slate-950 border border-slate-800 text-white text-xs rounded-xl pl-9 pr-10 py-2.5 focus:border-indigo-500 focus:outline-none"
+                  className="w-full bg-slate-950 border border-slate-800 text-slate-100 placeholder-slate-500 text-xs rounded-xl pl-9 pr-10 py-2.5 focus:bg-slate-950 focus:border-indigo-500 focus:outline-none transition shadow-inner"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-3 text-slate-500 hover:text-slate-300"
+                  className="absolute right-3 top-3 text-slate-500 hover:text-slate-300 cursor-pointer"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -272,7 +288,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-indigo-600/30 transition flex items-center justify-center space-x-2 cursor-pointer"
+              className="w-full py-3 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-indigo-600/30 transition flex items-center justify-center space-x-2 cursor-pointer active:scale-98"
             >
               {isLoading ? (
                 <>
@@ -298,7 +314,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Elton Rabelo"
-                  className="w-full bg-slate-950 border border-slate-800 text-white text-xs rounded-xl pl-9 pr-3 py-2.5 focus:border-indigo-500 focus:outline-none"
+                  className="w-full bg-slate-950 border border-slate-800 text-slate-100 placeholder-slate-500 text-xs rounded-xl pl-9 pr-3 py-2.5 focus:bg-slate-950 focus:border-indigo-500 focus:outline-none transition shadow-inner"
                 />
               </div>
             </div>
@@ -312,7 +328,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="elton.rabelo@agile.com"
-                  className="w-full bg-slate-950 border border-slate-800 text-white text-xs rounded-xl pl-9 pr-3 py-2.5 focus:border-indigo-500 focus:outline-none"
+                  className="w-full bg-slate-950 border border-slate-800 text-slate-100 placeholder-slate-500 text-xs rounded-xl pl-9 pr-3 py-2.5 focus:bg-slate-950 focus:border-indigo-500 focus:outline-none transition shadow-inner"
                 />
               </div>
             </div>
@@ -324,7 +340,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
                 <select
                   value={role}
                   onChange={(e) => setRole(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 text-white text-xs rounded-xl pl-9 pr-3 py-2.5 focus:border-indigo-500 focus:outline-none cursor-pointer"
+                  className="w-full bg-slate-950 border border-slate-800 text-slate-100 text-xs rounded-xl pl-9 pr-3 py-2.5 focus:bg-slate-950 focus:border-indigo-500 focus:outline-none cursor-pointer transition shadow-inner"
                 >
                   <option value="Administrador / GPM">Administrador / GPM</option>
                   <option value="Product Owner">Product Owner</option>
@@ -343,7 +359,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full bg-slate-950 border border-slate-800 text-white text-xs rounded-xl px-3 py-2.5 focus:border-indigo-500 focus:outline-none"
+                  className="w-full bg-slate-950 border border-slate-800 text-slate-100 placeholder-slate-500 text-xs rounded-xl px-3 py-2.5 focus:bg-slate-950 focus:border-indigo-500 focus:outline-none transition shadow-inner"
                 />
               </div>
               <div>
@@ -353,7 +369,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full bg-slate-950 border border-slate-800 text-white text-xs rounded-xl px-3 py-2.5 focus:border-indigo-500 focus:outline-none"
+                  className="w-full bg-slate-950 border border-slate-800 text-slate-100 placeholder-slate-500 text-xs rounded-xl px-3 py-2.5 focus:bg-slate-950 focus:border-indigo-500 focus:outline-none transition shadow-inner"
                 />
               </div>
             </div>
@@ -361,7 +377,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-indigo-600/30 transition flex items-center justify-center space-x-2 cursor-pointer"
+              className="w-full py-3 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-indigo-600/30 transition flex items-center justify-center space-x-2 cursor-pointer active:scale-98"
             >
               {isLoading ? (
                 <>

@@ -11,20 +11,18 @@ import {
   X,
   PlusCircle,
   BarChart3,
-  RefreshCw,
-  Database,
   Workflow,
-  CheckSquare,
+  Bell,
 } from "lucide-react";
 import { UserProfile } from "./AuthModal";
 import { EBLogo } from "./EBLogo";
-import { isSupabaseConfigured } from "../lib/supabase";
 
 interface SidebarNavProps {
   activeTab: "generator" | "kanban" | "pipeline" | "reports" | "audit" | "guide" | "admin";
   setActiveTab: (tab: "generator" | "kanban" | "pipeline" | "reports" | "audit" | "guide" | "admin") => void;
   savedStoriesCount: number;
   readyStoriesCount: number;
+  urgentStoriesCount?: number;
   currentUser: UserProfile | null;
   onLogout: () => void;
   onResetSystem?: () => void;
@@ -39,17 +37,13 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
   setActiveTab,
   savedStoriesCount,
   readyStoriesCount,
+  urgentStoriesCount = 0,
   currentUser,
   onLogout,
-  onResetSystem,
   onCreateNewStory,
-  onSyncDatabase,
-  isSyncingDatabase,
-  onOpenSupabaseModal,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const isDbConfigured = isSupabaseConfigured();
 
   const isAdmin =
     currentUser?.role.toLowerCase().includes("admin") ||
@@ -67,14 +61,18 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
       id: "kanban" as const,
       label: "Quadro Backlog",
       icon: Kanban,
-      badge: savedStoriesCount > 0 ? savedStoriesCount : null,
+      badge: urgentStoriesCount > 0 ? `⚠️ ${urgentStoriesCount}` : savedStoriesCount > 0 ? savedStoriesCount : null,
+      badgeColor:
+        urgentStoriesCount > 0
+          ? "bg-amber-950/90 text-amber-300 border-amber-600 animate-pulse font-bold"
+          : "bg-slate-800 text-slate-300 border-slate-700",
     },
     {
       id: "pipeline" as const,
       label: "Esteira Homologação",
       icon: Workflow,
       badge: "8 Passos",
-      badgeColor: "bg-emerald-950 text-emerald-300 border-emerald-800/80",
+      badgeColor: "bg-emerald-950/80 text-emerald-300 border-emerald-700/60",
     },
     {
       id: "reports" as const,
@@ -87,7 +85,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
       label: "Painel ADM",
       icon: ShieldCheck,
       badge: isAdmin ? "RBAC" : null,
-      badgeColor: "bg-indigo-950 text-indigo-300 border-indigo-800",
+      badgeColor: "bg-indigo-950/80 text-indigo-300 border-indigo-700/60",
     },
     {
       id: "guide" as const,
@@ -100,14 +98,17 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
   return (
     <>
       {/* Mobile Top Header */}
-      <div className="lg:hidden bg-slate-900 border-b border-slate-800 px-4 py-3 flex items-center justify-between sticky top-0 z-40">
+      <div className="lg:hidden bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-4 py-3 flex items-center justify-between sticky top-0 z-40 shadow-lg shadow-black/40">
         <div className="flex items-center space-x-2.5">
           <EBLogo size={32} />
-          <span className="font-bold text-sm text-white">Histórias Ágeis</span>
+          <div>
+            <span className="font-extrabold text-sm text-slate-100 block leading-none">Histórias Ágeis</span>
+            <span className="text-[10px] text-indigo-400 font-semibold">Scrum & BDD Studio</span>
+          </div>
         </div>
         <button
           onClick={() => setIsMobileOpen(!isMobileOpen)}
-          className="p-2 text-slate-400 hover:text-white rounded-lg bg-slate-950 border border-slate-800"
+          className="p-2 text-slate-300 hover:text-white rounded-xl bg-slate-800 border border-slate-700 transition"
         >
           {isMobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
@@ -117,32 +118,37 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
       {isMobileOpen && (
         <div
           onClick={() => setIsMobileOpen(false)}
-          className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-40 lg:hidden"
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs z-40 lg:hidden"
         />
       )}
 
       {/* Left Sidebar Drawer / Fixed Panel */}
       <aside
-        className={`fixed lg:sticky top-0 left-0 z-50 h-screen bg-slate-900/95 border-r border-slate-800 flex flex-col justify-between transition-all duration-300 backdrop-blur-xl ${
+        className={`fixed lg:sticky top-0 left-0 z-50 h-screen bg-slate-950 border-r border-slate-800/90 flex flex-col justify-between transition-all duration-300 shadow-2xl ${
           isCollapsed ? "lg:w-20" : "lg:w-64"
         } ${isMobileOpen ? "w-64 translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
       >
         {/* Top Branding & Collapse Button */}
         <div className="p-4 border-b border-slate-800/80 flex items-center justify-between">
           <div className="flex items-center space-x-3 overflow-hidden">
-            <EBLogo size={36} />
+            <div className="shrink-0 transition-transform hover:scale-105">
+              <EBLogo size={36} />
+            </div>
 
             {!isCollapsed && (
               <div className="leading-tight truncate">
-                <h1 className="font-black text-sm text-white truncate">Histórias Ágeis</h1>
-                <p className="text-[10px] text-amber-400 font-semibold truncate">Scrum & BDD Studio</p>
+                <h1 className="font-black text-sm text-slate-100 truncate tracking-tight">Histórias Ágeis</h1>
+                <p className="text-[10px] font-semibold text-indigo-400 truncate flex items-center space-x-1">
+                  <Sparkles className="w-2.5 h-2.5 inline text-amber-400" />
+                  <span>Scrum & BDD Studio</span>
+                </p>
               </div>
             )}
           </div>
 
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="hidden lg:flex p-1.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition cursor-pointer"
+            className="hidden lg:flex p-1.5 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded-lg transition cursor-pointer"
             title={isCollapsed ? "Expandir Menu" : "Recolher Menu"}
           >
             {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
@@ -157,7 +163,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
                 onCreateNewStory();
                 if (isMobileOpen) setIsMobileOpen(false);
               }}
-              className={`w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/20 transition flex items-center justify-center space-x-2 cursor-pointer ${
+              className={`w-full py-2.5 bg-gradient-to-r from-indigo-600 via-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/25 border border-indigo-400/30 transition-all flex items-center justify-center space-x-2 cursor-pointer active:scale-95 ${
                 isCollapsed ? "px-2" : "px-3"
               }`}
             >
@@ -185,22 +191,22 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
                   setActiveTab(item.id);
                   if (isMobileOpen) setIsMobileOpen(false);
                 }}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   isActive
-                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
-                    : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                    ? "bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30 border border-indigo-400/40"
+                    : "text-slate-400 hover:bg-slate-900 hover:text-slate-200 border border-transparent"
                 } ${isCollapsed ? "justify-center" : ""}`}
                 title={isCollapsed ? item.label : undefined}
               >
                 <div className="flex items-center space-x-3">
-                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-white" : "text-slate-400"}`} />
+                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-white" : "text-slate-400 group-hover:text-slate-300"}`} />
                   {!isCollapsed && <span className="truncate">{item.label}</span>}
                 </div>
 
                 {!isCollapsed && item.badge !== null && (
                   <span
                     className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                      item.badgeColor || "bg-indigo-950 text-indigo-300 border-indigo-800"
+                      item.badgeColor || (isActive ? "bg-indigo-800 text-indigo-100 border-indigo-400" : "bg-slate-800 text-slate-300 border-slate-700")
                     }`}
                   >
                     {item.badge}
@@ -215,7 +221,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
         <div className="p-3 border-t border-slate-800/80 space-y-2">
           {currentUser && (
             <div
-              className={`flex items-center justify-between bg-slate-950 border border-slate-800 rounded-xl p-2 ${
+              className={`flex items-center justify-between bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 ${
                 isCollapsed ? "justify-center" : ""
               }`}
             >
@@ -223,14 +229,14 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
                 <div
                   className={`w-8 h-8 rounded-lg bg-gradient-to-tr ${
                     currentUser.avatarColor || "from-indigo-500 to-indigo-700"
-                  } flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm`}
+                  } flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-md`}
                 >
                   {currentUser.name.substring(0, 2).toUpperCase()}
                 </div>
 
                 {!isCollapsed && (
                   <div className="leading-tight truncate">
-                    <p className="text-xs font-bold text-white truncate">{currentUser.name}</p>
+                    <p className="text-xs font-bold text-slate-200 truncate">{currentUser.name}</p>
                     <p className="text-[10px] text-indigo-400 truncate font-semibold">{currentUser.role}</p>
                   </div>
                 )}
@@ -240,15 +246,13 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
                 <button
                   onClick={onLogout}
                   title="Sair da Conta"
-                  className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-rose-400 transition cursor-pointer"
+                  className="p-1.5 hover:bg-rose-950/60 rounded-lg text-slate-400 hover:text-rose-400 transition cursor-pointer"
                 >
                   <LogOut className="w-4 h-4" />
                 </button>
               )}
             </div>
           )}
-
-          {/* User Profile */}
         </div>
       </aside>
     </>

@@ -176,6 +176,7 @@ E E deve exibir o aviso de aprovação em até 24 horas
   requester: "Ana Paula Costa - GPM de Pagamentos & Pix",
   status: "refinement",
   storyPoints: 5,
+  dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10), // Vence em 2 dias
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
   tags: ["Pix", "Bacen", "UX", "Limites"],

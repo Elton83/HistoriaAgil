@@ -11,7 +11,7 @@ import { InvestAuditModal } from "./components/InvestAuditModal";
 import { MethodologyGuideModal } from "./components/MethodologyGuideModal";
 import { AuthModal, UserProfile } from "./components/AuthModal";
 import { SupabaseModal } from "./components/SupabaseModal";
-import { UserStory, StoryStatus, InvestAudit, LLMProvider } from "./types";
+import { UserStory, StoryStatus, InvestAudit, LLMProvider, getStoryDeadlineStatus } from "./types";
 import { INITIAL_SAMPLE_STORY } from "./data/presets";
 import { validateUserStory } from "./utils/storyValidator";
 import { isSupabaseConfigured } from "./lib/supabase";
@@ -549,6 +549,10 @@ export default function App() {
         setActiveTab={handleTabChange}
         savedStoriesCount={stories.length}
         readyStoriesCount={stories.filter((s) => s.status === "ready").length}
+        urgentStoriesCount={stories.filter((s) => {
+          const status = getStoryDeadlineStatus(s.dueDate).status;
+          return status === "overdue" || status === "due_today" || status === "due_soon";
+        }).length}
         currentUser={currentUser}
         onLogout={handleLogout}
         onResetSystem={handleResetSystem}
@@ -559,37 +563,42 @@ export default function App() {
       />
 
       {/* Main Content View Container */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 bg-slate-950">
         {/* Top Header Breadcrumb / Header Bar */}
-        <header className="bg-slate-900/60 border-b border-slate-800/80 px-6 py-4 hidden lg:flex items-center justify-between sticky top-0 z-30 backdrop-blur-md">
-          <div>
-            <h2 className="text-base font-bold text-white flex items-center space-x-2">
-              <span>
-                {activeTab === "generator" && "Gerador Ágil & Estúdio de Requisitos"}
-                {activeTab === "kanban" && "Quadro Backlog & Fluxo Kanban"}
-                {activeTab === "pipeline" && "Esteira de Homologação & Checklist de Release"}
-                {activeTab === "reports" && "Relatórios Ágeis & Analytics do Backlog"}
-                {activeTab === "admin" && "Painel de Governança & Controle de Acesso (RBAC)"}
-                {activeTab === "guide" && "Guia Metodológico & Boas Práticas Scrum"}
-              </span>
-            </h2>
-            <p className="text-xs text-slate-400">
-              {activeTab === "generator" && "Crie e edite histórias com AC, RN e BDD estruturados"}
-              {activeTab === "kanban" && `Gestão e movimentação de ${stories.length} histórias cadastradas`}
-              {activeTab === "pipeline" && "Validação com 8 passos de homologação, Q.A e publicação em Staging/Main"}
-              {activeTab === "reports" && "Métricas de Story Points, maturidade de requisitos e exportação CSV"}
-              {activeTab === "admin" && "Gerencie perfis, permissões e consulte métricas do banco de dados"}
-              {activeTab === "guide" && "Diretrizes INVEST, Gherkin e Engenharia de Requisitos"}
-            </p>
+        <header className="bg-slate-900/90 border-b border-slate-800/90 px-6 py-3.5 hidden lg:flex items-center justify-between sticky top-0 z-30 backdrop-blur-md shadow-lg shadow-black/40">
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shadow-sm">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-slate-100 flex items-center space-x-2">
+                <span>
+                  {activeTab === "generator" && "Gerador Ágil & Estúdio de Requisitos"}
+                  {activeTab === "kanban" && "Quadro Backlog & Fluxo Kanban"}
+                  {activeTab === "pipeline" && "Esteira de Homologação & Checklist de Release"}
+                  {activeTab === "reports" && "Relatórios Ágeis & Analytics do Backlog"}
+                  {activeTab === "admin" && "Painel de Governança & Controle de Acesso (RBAC)"}
+                  {activeTab === "guide" && "Guia Metodológico & Boas Práticas Scrum"}
+                </span>
+              </h2>
+              <p className="text-[11px] text-slate-400">
+                {activeTab === "generator" && "Crie e edite histórias com AC, RN, BDD estruturados e controle de prazos"}
+                {activeTab === "kanban" && `Gestão e movimentação de ${stories.length} histórias cadastradas com alertas de prazos`}
+                {activeTab === "pipeline" && "Validação com 8 passos de homologação, Q.A e publicação em Staging/Main"}
+                {activeTab === "reports" && "Métricas de Story Points, maturidade de requisitos e exportação CSV"}
+                {activeTab === "admin" && "Gerencie perfis, permissões e consulte métricas do banco de dados"}
+                {activeTab === "guide" && "Diretrizes INVEST, Gherkin e Engenharia de Requisitos"}
+              </p>
+            </div>
           </div>
 
           <div className="flex items-center space-x-3">
             <button
               onClick={handleCreateNewStory}
-              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-md shadow-indigo-600/20 transition flex items-center space-x-1.5 cursor-pointer"
+              className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold text-xs rounded-xl shadow-md shadow-indigo-600/30 transition-all flex items-center space-x-1.5 cursor-pointer active:scale-98"
             >
               <PlusCircle className="w-3.5 h-3.5" />
-              <span>+ Nova História</span>
+              <span>Nova História</span>
             </button>
           </div>
         </header>
@@ -600,10 +609,10 @@ export default function App() {
             <div
               className={`px-4 py-3 rounded-xl border shadow-2xl flex items-center space-x-3 text-xs font-semibold backdrop-blur-md ${
                 toastMessage.type === "success"
-                  ? "bg-emerald-950/90 border-emerald-500/50 text-emerald-200"
+                  ? "bg-emerald-950/90 border-emerald-700 text-emerald-200"
                   : toastMessage.type === "error"
-                  ? "bg-rose-950/90 border-rose-500/50 text-rose-200"
-                  : "bg-indigo-950/90 border-indigo-500/50 text-indigo-200"
+                  ? "bg-rose-950/90 border-rose-700 text-rose-200"
+                  : "bg-indigo-950/90 border-indigo-700 text-indigo-200"
               }`}
             >
               {toastMessage.type === "error" ? (
@@ -619,11 +628,12 @@ export default function App() {
         {/* Main Workspace Area */}
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {isLoadingStories && (
-            <div className="mb-4 p-3 bg-indigo-950/40 border border-indigo-800/50 rounded-xl flex items-center space-x-3 text-indigo-300 text-xs">
+            <div className="mb-4 p-3 bg-indigo-950/80 border border-indigo-800 rounded-xl flex items-center space-x-3 text-indigo-300 text-xs shadow-md">
               <Loader2 className="w-4 h-4 animate-spin shrink-0 text-indigo-400" />
               <span>Sincronizando histórias com o banco de dados Supabase PostgreSQL...</span>
             </div>
           )}
+
 
           {activeTab === "generator" && (
             <GeneratorStudio
@@ -685,10 +695,10 @@ export default function App() {
         </main>
 
         {/* Footer */}
-        <footer className="border-t border-slate-800/80 bg-slate-900/60 py-4 text-center text-xs text-slate-400">
+        <footer className="border-t border-slate-800/90 bg-slate-900/90 py-4 text-center text-xs text-slate-400">
           <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-            <span>Histórias Ágeis • Engenharia de Requisitos & BDD</span>
-            <span className="text-slate-400 font-medium">Alinhado ao padrão INVEST & Framework Scrum</span>
+            <span className="text-slate-300 font-medium">Histórias Ágeis • Engenharia de Requisitos & BDD</span>
+            <span className="text-slate-500 font-medium">Alinhado ao padrão INVEST & Framework Scrum</span>
           </div>
         </footer>
       </div>

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { UserStory, LLMProvider, AVAILABLE_MODELS } from "../types";
+import { UserStory, LLMProvider, AVAILABLE_MODELS, getStoryDeadlineStatus } from "../types";
 import { parseUploadedFile, parseRecordedVideoBlob, ParsedFileInfo } from "../utils/fileReader";
 import { validateUserStory } from "../utils/storyValidator";
 import { generateStoryPDF } from "../utils/pdfExporter";
@@ -38,6 +38,9 @@ import {
   Bot,
   Cpu,
   Zap,
+  Calendar,
+  Clock,
+  Flame,
 } from "lucide-react";
 
 interface GeneratorStudioProps {
@@ -51,7 +54,8 @@ interface GeneratorStudioProps {
     extraInstructions: string,
     images?: Array<{ mimeType: string; base64Data: string; fileName?: string }>,
     provider?: LLMProvider,
-    model?: string
+    model?: string,
+    dueDate?: string
   ) => Promise<void>;
   isGenerating: boolean;
   onSaveToBacklog: (story: UserStory) => void;
@@ -101,38 +105,29 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
     }
   };
 
-  // Input state
+  // Form states for generating
   const [contextText, setContextText] = useState("");
   const [projectName, setProjectName] = useState("");
   const [epicName, setEpicName] = useState("");
   const [requester, setRequester] = useState("");
+  const [dueDate, setDueDate] = useState("");
   const [extraInstructions, setExtraInstructions] = useState("");
 
-  // Clear form completely for real data entry
-  const handleClearForm = () => {
-    setContextText("");
-    setProjectName("");
-    setEpicName("");
-    setRequester("");
-    setExtraInstructions("");
-    setAttachedFile(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-    onStoryChange(null);
-  };
-
-  // File Upload State
+  // Attached file state
   const [attachedFile, setAttachedFile] = useState<ParsedFileInfo | null>(null);
   const [isReadingFile, setIsReadingFile] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // UI state
+  // Video recording modal state
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
+
+  // View Mode: interactive | markdown | jira
   const [viewMode, setViewMode] = useState<"interactive" | "markdown" | "jira">("interactive");
-  const [copiedFormat, setCopiedFormat] = useState<string | null>(null);
+
+  // Feedback states
   const [savedFeedback, setSavedFeedback] = useState(false);
+  const [copiedFormat, setCopiedFormat] = useState<string | null>(null);
   const [validationToast, setValidationToast] = useState<{
     show: boolean;
     score: number;
@@ -140,68 +135,62 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
     total: number;
   } | null>(null);
 
-  // Process Recorded Video
-  const handleSaveRecordedVideo = async (blob: Blob, customFileName: string) => {
-    setIsReadingFile(true);
-    try {
-      const parsed = await parseRecordedVideoBlob(blob, customFileName);
-      setAttachedFile(parsed);
-      if (parsed.textContent) {
-        setContextText((prev) =>
-          prev.trim()
-            ? `${prev}\n\n--- Gravação de Vídeo Anexada ---\n${parsed.textContent}`
-            : parsed.textContent || ""
-        );
-      }
-    } catch (err) {
-      console.error("Erro ao salvar gravação de vídeo:", err);
-      alert("Erro ao processar a gravação de vídeo.");
-    } finally {
-      setIsReadingFile(false);
-    }
-  };
-
-  // Process File Selection
+  // Handle file selection (spreadsheets, docs, images, videos, audio, zip)
   const handleFileChange = async (file: File) => {
-    if (!file) return;
     setIsReadingFile(true);
     try {
       const parsed = await parseUploadedFile(file);
       setAttachedFile(parsed);
 
-      if (parsed.isImage) {
-        setContextText((prev) =>
-          prev.trim()
-            ? prev
-            : `Análise de requisito a partir do arquivo de imagem anexado (${parsed.fileName}).`
-        );
-      } else if (parsed.textContent) {
-        // Append or replace text content
-        setContextText((prev) =>
-          prev.trim()
-            ? `${prev}\n\n--- Conteúdo do Arquivo (${parsed.fileName}) ---\n${parsed.textContent}`
-            : parsed.textContent || ""
-        );
+      if (parsed.textContent && parsed.textContent.trim().length > 0) {
+        setContextText((prev) => {
+          const header = `\n--- [CONTEÚDO EXTRAÍDO DO ARQUIVO: ${parsed.fileName}] ---\n`;
+          return prev ? `${prev}\n${header}${parsed.textContent}` : `${header}${parsed.textContent}`;
+        });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Erro ao ler arquivo:", err);
-      alert("Não foi possível ler o arquivo selecionado. Verifique o formato.");
+      alert(err.message || "Erro ao processar o arquivo anexado.");
     } finally {
       setIsReadingFile(false);
     }
   };
 
-  const handleDropFile = (e: React.DragEvent) => {
+  // Drag and drop handlers
+  const handleDropFile = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragOver(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       handleFileChange(e.dataTransfer.files[0]);
     }
   };
 
-  const handleClearContext = () => {
+  // Handle saving recorded video from modal
+  const handleSaveRecordedVideo = async (videoBlob: Blob, durationSeconds: number) => {
+    setIsReadingFile(true);
+    try {
+      const parsed = await parseRecordedVideoBlob(videoBlob, `gravacao_video_${durationSeconds}s.webm`);
+      setAttachedFile(parsed);
+      setContextText((prev) => {
+        const header = `\n--- [GRAVAÇÃO DE VÍDEO ANEXADA: ${parsed.fileName} (${durationSeconds}s)] ---\n`;
+        return prev ? `${prev}\n${header}${parsed.textContent}` : `${header}${parsed.textContent}`;
+      });
+    } catch (err: any) {
+      console.error("Erro ao salvar vídeo gravado:", err);
+    } finally {
+      setIsReadingFile(false);
+    }
+  };
+
+  const handleClearForm = () => {
     setContextText("");
+    setProjectName("");
+    setEpicName("");
+    setRequester("");
+    setDueDate("");
+    setExtraInstructions("");
     setAttachedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handlePasteFromClipboard = async () => {
@@ -272,7 +261,6 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
   // Export story as a professional PDF document
   const handleExportPDF = () => {
     if (!currentStory) return;
-    // Always calculate fresh validation before generating PDF
     const report = validateUserStory(currentStory);
     const updated = {
       ...currentStory,
@@ -287,10 +275,6 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
   const scopeWordCount = contextText.trim() ? contextText.trim().split(/\s+/).length : 0;
   const isScopeLengthValid = scopeCharCount >= 15;
 
-  const ambiguousInPrompt = ["fácil", "rápido", "amigável", "intuitivo", "bonito"].filter((word) =>
-    contextText.toLowerCase().includes(word)
-  );
-
   // Copy helpers
   const handleCopy = (text: string, formatName: string) => {
     navigator.clipboard.writeText(text);
@@ -301,6 +285,9 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
   // Format Jira Syntax
   const generateJiraFormat = (story: UserStory): string => {
     let jira = `h1. ${story.title}\n\n`;
+    if (story.dueDate) {
+      jira += `*Prazo de Entrega:* ${story.dueDate}\n\n`;
+    }
     jira += `*História de Usuário:*\n`;
     jira += `* *Como* ${story.story.role}\n`;
     jira += `* *Quero* ${story.story.want}\n`;
@@ -337,7 +324,7 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
     return jira;
   };
 
-  // Interactive Story Handlers (re-runs validation tests automatically)
+  // Interactive Story Handlers
   const updateStoryAndValidate = (updatedStory: UserStory) => {
     const newReport = validateUserStory(updatedStory);
     onStoryChange({
@@ -379,7 +366,7 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
       ...currentStory,
       acceptanceCriteria: [
         ...currentStory.acceptanceCriteria,
-        { id: nextId, text: "Novo critério de aceitação observável..." },
+        { id: nextId, text: "Novo critério de aceitação observável e testável..." },
       ],
     });
   };
@@ -445,41 +432,43 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
     setTimeout(() => setSavedFeedback(false), 2000);
   };
 
+  const currentDeadline = currentStory ? getStoryDeadlineStatus(currentStory.dueDate) : null;
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
       {/* LEFT COLUMN: Scope Text Box & File Upload (5 cols) */}
       <div className="lg:col-span-5 space-y-5">
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl shadow-black/40 space-y-4 backdrop-blur-md">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3.5">
             <div className="flex items-center space-x-2.5">
-              <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-xl border border-indigo-500/20">
-                <Sparkles className="w-4 h-4" />
+              <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 flex items-center justify-center shadow-sm">
+                <Sparkles className="w-4 h-4 text-indigo-400" />
               </div>
               <div>
-                <h2 className="font-bold text-sm text-white">Escopo & Contexto do Requisito</h2>
+                <h2 className="font-bold text-sm text-slate-100">Escopo & Contexto do Requisito</h2>
                 <p className="text-[11px] text-slate-400 font-medium">Insira as informações do seu requisito real</p>
               </div>
             </div>
             <button
               type="button"
               onClick={handleClearForm}
-              className="text-xs bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 px-3 py-1.5 rounded-xl font-bold transition cursor-pointer flex items-center space-x-1.5 shadow-sm active:scale-95"
+              className="text-xs bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-700/60 px-2.5 py-1.5 rounded-xl font-bold transition cursor-pointer flex items-center space-x-1.5 shadow-sm active:scale-95"
               title="Limpar formulário e reiniciar estúdio"
             >
               <Trash2 className="w-3.5 h-3.5 text-rose-400" />
-              <span>Limpar Formulário</span>
+              <span className="hidden sm:inline">Limpar</span>
             </button>
           </div>
 
-          <form onSubmit={handleGenerate} className="space-y-3.5">
+          <form onSubmit={handleGenerate} className="space-y-4">
             {/* AI Engine & LLM Model Selector */}
-            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 space-y-2.5">
+            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-3">
               <div className="flex items-center justify-between">
-                <label className="text-[11px] font-semibold text-slate-200 flex items-center space-x-1.5">
+                <label className="text-[11px] font-bold text-slate-200 flex items-center space-x-1.5">
                   <Bot className="w-3.5 h-3.5 text-indigo-400" />
                   <span>Motor de IA Vinculado (LLM)</span>
                 </label>
-                <span className="text-[10px] text-slate-400">
+                <span className="text-[10px] text-slate-400 font-semibold px-2 py-0.5 bg-slate-900 border border-slate-700 rounded-md">
                   {activeProvider === "gemini" ? "Google GenAI" : "OpenAI ChatGPT"}
                 </span>
               </div>
@@ -491,11 +480,11 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                   onClick={() => handleProviderChange("gemini")}
                   className={`py-1.5 px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center space-x-2 transition cursor-pointer ${
                     activeProvider === "gemini"
-                      ? "bg-indigo-600 text-white shadow-md"
-                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+                      ? "bg-slate-800 text-indigo-300 shadow-sm border border-indigo-500/40 font-bold"
+                      : "text-slate-400 hover:text-slate-200"
                   }`}
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
                   <span>Google Gemini</span>
                 </button>
                 <button
@@ -503,11 +492,11 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                   onClick={() => handleProviderChange("openai")}
                   className={`py-1.5 px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center space-x-2 transition cursor-pointer ${
                     activeProvider === "openai"
-                      ? "bg-emerald-600 text-white shadow-md"
-                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+                      ? "bg-slate-800 text-emerald-300 shadow-sm border border-emerald-500/40 font-bold"
+                      : "text-slate-400 hover:text-slate-200"
                   }`}
                 >
-                  <Bot className="w-3.5 h-3.5 text-emerald-300" />
+                  <Bot className="w-3.5 h-3.5 text-emerald-400" />
                   <span>ChatGPT (OpenAI)</span>
                 </button>
               </div>
@@ -524,9 +513,9 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                       className={`text-left p-2.5 rounded-xl border transition cursor-pointer flex flex-col justify-between ${
                         isSelected
                           ? activeProvider === "gemini"
-                            ? "bg-indigo-950/70 border-indigo-500/80 text-white shadow-sm ring-1 ring-indigo-500/50"
-                            : "bg-emerald-950/70 border-emerald-500/80 text-white shadow-sm ring-1 ring-emerald-500/50"
-                          : "bg-slate-900/60 border-slate-800/80 text-slate-400 hover:border-slate-700 hover:text-slate-200"
+                            ? "bg-indigo-950/60 border-indigo-500 text-indigo-200 shadow-sm ring-1 ring-indigo-500/50"
+                            : "bg-emerald-950/60 border-emerald-500 text-emerald-200 shadow-sm ring-1 ring-emerald-500/50"
+                          : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200"
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1">
@@ -538,9 +527,9 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                             className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md ${
                               isSelected
                                 ? activeProvider === "gemini"
-                                  ? "bg-indigo-500/30 text-indigo-200 border border-indigo-400/40"
-                                  : "bg-emerald-500/30 text-emerald-200 border border-emerald-400/40"
-                                : "bg-slate-800 text-slate-400"
+                                ? "bg-indigo-900 text-indigo-300 border border-indigo-700"
+                                : "bg-emerald-900 text-emerald-300 border border-emerald-700"
+                                : "bg-slate-800 text-slate-400 border border-slate-700"
                             }`}
                           >
                             {modelOpt.badge}
@@ -556,22 +545,35 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
               </div>
             </div>
 
-            {/* Metadata Field: Nome do Projeto */}
-            <div>
-              <label className="block text-[11px] font-medium text-slate-300 mb-1">Nome do Projeto</label>
-              <input
-                type="text"
-                value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
-                placeholder="Ex: Banking Mobile"
-                className="w-full bg-slate-950/90 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
-              />
+            {/* Metadata Fields: Nome do Projeto & Épico */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">Nome do Projeto</label>
+                <input
+                  type="text"
+                  value={projectName}
+                  onChange={(e) => setProjectName(e.target.value)}
+                  placeholder="Ex: Banking Mobile"
+                  className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder-slate-500 focus:bg-slate-950 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition shadow-inner"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">Épico / Módulo</label>
+                <input
+                  type="text"
+                  value={epicName}
+                  onChange={(e) => setEpicName(e.target.value)}
+                  placeholder="Ex: Autenticação & Pix"
+                  className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder-slate-500 focus:bg-slate-950 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition shadow-inner"
+                />
+              </div>
             </div>
 
             {/* Scope Text Box Header & Actions */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="block text-xs font-semibold text-slate-200 flex items-center space-x-1.5">
+                <label className="block text-xs font-bold text-slate-200 flex items-center space-x-1.5">
                   <FileText className="w-3.5 h-3.5 text-indigo-400" />
                   <span>Escopo Bruto do Requisito</span>
                 </label>
@@ -579,7 +581,7 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                 <button
                   type="button"
                   onClick={handlePasteFromClipboard}
-                  className="text-[10px] text-indigo-400 font-medium hover:underline flex items-center space-x-0.5 cursor-pointer"
+                  className="text-[10px] text-indigo-300 font-bold hover:underline flex items-center space-x-0.5 cursor-pointer bg-indigo-950/80 px-2 py-0.5 rounded-md border border-indigo-700/60"
                 >
                   <span>Colar</span>
                 </button>
@@ -589,9 +591,9 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
               <textarea
                 value={contextText}
                 onChange={(e) => setContextText(e.target.value)}
-                rows={8}
+                rows={7}
                 placeholder="Cole aqui o escopo do requisito, ata de reunião, regras de negócio ou especificações brutas..."
-                className="w-full bg-slate-950/90 border border-slate-800 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-mono leading-relaxed resize-y transition"
+                className="w-full bg-slate-950/80 border border-slate-800 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 focus:bg-slate-950 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 font-sans leading-relaxed resize-y transition shadow-inner"
               />
 
               {/* Text Stats */}
@@ -614,8 +616,8 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
 
             {/* File Upload / Drag & Drop Area */}
             <div className="space-y-2">
-              <label className="block text-[11px] font-semibold text-slate-300">
-                Anexar Arquivo:
+              <label className="block text-[11px] font-bold text-slate-300">
+                Anexar Arquivo ou Especificação:
               </label>
 
               <input
@@ -639,10 +641,10 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                 onDragLeave={() => setIsDragOver(false)}
                 onDrop={handleDropFile}
                 onClick={() => fileInputRef.current?.click()}
-                className={`w-full border border-dashed rounded-xl p-2 text-center cursor-pointer transition flex items-center justify-center space-x-2 ${
+                className={`w-full border border-dashed rounded-xl p-3 text-center cursor-pointer transition flex items-center justify-center space-x-2 ${
                   isDragOver
-                    ? "border-indigo-400 bg-indigo-950/40"
-                    : "border-slate-800 hover:border-slate-700 bg-slate-950/60 hover:bg-slate-950"
+                    ? "border-indigo-400 bg-indigo-950/60"
+                    : "border-slate-700 hover:border-indigo-500 bg-slate-950/60 hover:bg-slate-950"
                 }`}
               >
                 {isReadingFile ? (
@@ -652,11 +654,11 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                   </div>
                 ) : (
                   <div className="flex items-center space-x-2 text-[11px] text-slate-300">
-                    <div className="p-1 bg-indigo-500/10 text-indigo-400 rounded-md border border-indigo-500/20">
+                    <div className="p-1.5 bg-indigo-500/10 text-indigo-400 rounded-lg border border-indigo-500/20">
                       <Upload className="w-3.5 h-3.5" />
                     </div>
                     <span>
-                      <span className="font-semibold text-indigo-400">Anexar arquivo</span> (Excel, CSV, ZIP, Doc, Imagem)
+                      <span className="font-bold text-indigo-400">Clique para anexar</span> ou arraste (Excel, CSV, DOC, PDF, Imagem)
                     </span>
                   </div>
                 )}
@@ -664,7 +666,7 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
 
               {/* Attached File Pill */}
               {attachedFile && (
-                <div className="bg-slate-950 border border-indigo-800/80 rounded-xl p-2.5 space-y-2 text-xs text-indigo-200">
+                <div className="bg-indigo-950/60 border border-indigo-700/60 rounded-xl p-2.5 space-y-2 text-xs text-indigo-200">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2 truncate pr-2">
                       {attachedFile.isSpreadsheet ? (
@@ -678,7 +680,7 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                       )}
 
                       <div className="truncate">
-                        <p className="font-bold text-white truncate">{attachedFile.fileName}</p>
+                        <p className="font-bold text-slate-100 truncate">{attachedFile.fileName}</p>
                         <p className="text-[10px] text-slate-400 font-medium">
                           {attachedFile.fileSizeFormatted} • {attachedFile.fileType}
                         </p>
@@ -691,7 +693,7 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                         setAttachedFile(null);
                         if (fileInputRef.current) fileInputRef.current.value = "";
                       }}
-                      className="p-1 hover:bg-slate-800 text-slate-400 hover:text-rose-400 rounded-lg transition shrink-0 cursor-pointer"
+                      className="p-1 hover:bg-indigo-900 text-slate-400 hover:text-rose-400 rounded-lg transition shrink-0 cursor-pointer"
                       title="Remover anexo"
                     >
                       <X className="w-4 h-4" />
@@ -700,7 +702,7 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
 
                   {/* Video Player Preview if Video is Attached */}
                   {attachedFile.isVideo && attachedFile.videoUrl && (
-                    <div className="rounded-lg overflow-hidden border border-slate-800 bg-black aspect-video max-h-36 mx-auto">
+                    <div className="rounded-lg overflow-hidden border border-slate-700 bg-black aspect-video max-h-36 mx-auto">
                       <video
                         src={attachedFile.videoUrl}
                         controls
@@ -718,8 +720,8 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                 type="text"
                 value={extraInstructions}
                 onChange={(e) => setExtraInstructions(e.target.value)}
-                placeholder="Foco Adicional (Opcional): ex. Dar atenção às normas Bacen"
-                className="w-full bg-slate-950/90 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
+                placeholder="Foco Adicional (Opcional): ex. Dar atenção às normas Bacen ou LGPD"
+                className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder-slate-500 focus:bg-slate-950 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition shadow-inner"
               />
             </div>
 
@@ -727,7 +729,7 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
             <button
               type="submit"
               disabled={!contextText.trim() || isGenerating}
-              className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-lg shadow-indigo-600/20 flex items-center justify-center space-x-2 transition cursor-pointer mt-1"
+              className="w-full py-3 px-4 bg-gradient-to-r from-indigo-600 via-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 disabled:opacity-50 text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-lg shadow-indigo-600/30 flex items-center justify-center space-x-2 transition-all cursor-pointer active:scale-98"
             >
               {isGenerating ? (
                 <>
@@ -748,21 +750,33 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
       {/* RIGHT COLUMN: User Story Output & Interactive Editor & Validation Tests (7 cols) */}
       <div className="lg:col-span-7 space-y-5">
         {currentStory ? (
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-5">
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl shadow-black/40 space-y-5 backdrop-blur-md">
             {/* Top Bar Controls */}
-            <div className="space-y-3 border-b border-slate-800 pb-4">
+            <div className="space-y-3.5 border-b border-slate-800 pb-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2 min-w-0">
-                  <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase whitespace-nowrap shrink-0">
+                  <span className="bg-indigo-950/80 text-indigo-300 border border-indigo-700/60 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase whitespace-nowrap shrink-0">
                     Incremento Gerado
                   </span>
                   {currentStory.projectName && (
-                    <span className="text-xs text-slate-300 font-semibold whitespace-nowrap truncate max-w-[200px]">
+                    <span className="text-xs text-slate-200 font-bold whitespace-nowrap truncate max-w-[200px]">
                       {currentStory.projectName}
                     </span>
                   )}
+                  {currentStory.dueDate && currentDeadline && (
+                    <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border flex items-center space-x-1 whitespace-nowrap ${currentDeadline.badgeClass}`}>
+                      {currentDeadline.status === "overdue" ? (
+                        <AlertTriangle className="w-3 h-3 text-rose-400" />
+                      ) : currentDeadline.status === "due_today" ? (
+                        <Flame className="w-3 h-3 text-amber-400" />
+                      ) : (
+                        <Clock className="w-3 h-3 text-orange-400" />
+                      )}
+                      <span>Prazo: {currentStory.dueDate} ({currentDeadline.label})</span>
+                    </span>
+                  )}
                   {currentStory.attachedFileName && (
-                    <span className="bg-slate-950 text-slate-400 border border-slate-800 text-[10px] px-2.5 py-0.5 rounded-full truncate max-w-[180px] whitespace-nowrap">
+                    <span className="bg-slate-800 text-slate-300 border border-slate-700 text-[10px] font-medium px-2.5 py-0.5 rounded-full truncate max-w-[180px] whitespace-nowrap">
                       📎 {currentStory.attachedFileName}
                     </span>
                   )}
@@ -770,8 +784,8 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                     <span
                       className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border flex items-center space-x-1 whitespace-nowrap ${
                         currentStory.usedProvider === "openai"
-                          ? "bg-emerald-950/80 text-emerald-300 border-emerald-800/80"
-                          : "bg-indigo-950/80 text-indigo-300 border-indigo-800/80"
+                          ? "bg-emerald-950/80 text-emerald-300 border-emerald-700/60"
+                          : "bg-indigo-950/80 text-indigo-300 border-indigo-700/60"
                       }`}
                     >
                       <Bot className="w-3 h-3" />
@@ -789,8 +803,8 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                     onClick={() => setViewMode("interactive")}
                     className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer whitespace-nowrap ${
                       viewMode === "interactive"
-                        ? "bg-indigo-600 text-white shadow"
-                        : "text-slate-400 hover:text-white"
+                        ? "bg-slate-800 text-indigo-300 font-bold shadow-sm border border-slate-700"
+                        : "text-slate-400 hover:text-slate-200"
                     }`}
                   >
                     Interativo
@@ -799,8 +813,8 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                     onClick={() => setViewMode("markdown")}
                     className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer whitespace-nowrap ${
                       viewMode === "markdown"
-                        ? "bg-indigo-600 text-white shadow"
-                        : "text-slate-400 hover:text-white"
+                        ? "bg-slate-800 text-indigo-300 font-bold shadow-sm border border-slate-700"
+                        : "text-slate-400 hover:text-slate-200"
                     }`}
                   >
                     Markdown
@@ -809,8 +823,8 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                     onClick={() => setViewMode("jira")}
                     className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer whitespace-nowrap ${
                       viewMode === "jira"
-                        ? "bg-indigo-600 text-white shadow"
-                        : "text-slate-400 hover:text-white"
+                        ? "bg-slate-800 text-indigo-300 font-bold shadow-sm border border-slate-700"
+                        : "text-slate-400 hover:text-slate-200"
                     }`}
                   >
                     JIRA Syntax
@@ -823,7 +837,7 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                 <button
                   onClick={handleReRunStoryValidation}
                   title="Executar testes de validação automática"
-                  className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition flex items-center space-x-1.5 text-xs font-bold shadow-md cursor-pointer whitespace-nowrap shrink-0"
+                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-all flex items-center space-x-1.5 text-xs font-bold shadow-md shadow-indigo-600/30 cursor-pointer whitespace-nowrap shrink-0 active:scale-98"
                 >
                   <ShieldCheck className="w-3.5 h-3.5 text-indigo-200" />
                   <span className="whitespace-nowrap">Validar História</span>
@@ -832,7 +846,7 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                 <button
                   onClick={handleExportPDF}
                   title="Gerar e baixar o PDF do produto final com laudo técnico"
-                  className="px-3 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl transition flex items-center space-x-1.5 text-xs font-bold shadow-md cursor-pointer whitespace-nowrap shrink-0"
+                  className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white rounded-xl transition-all flex items-center space-x-1.5 text-xs font-bold shadow-md shadow-emerald-600/30 cursor-pointer whitespace-nowrap shrink-0 active:scale-98"
                 >
                   <FileDown className="w-3.5 h-3.5" />
                   <span className="whitespace-nowrap">Baixar PDF Final</span>
@@ -841,7 +855,7 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                 <button
                   onClick={onOpenRefineModal}
                   title="Refinar com IA"
-                  className="px-3 py-2 bg-indigo-950/80 border border-indigo-800/80 text-indigo-300 hover:bg-indigo-900 rounded-xl transition flex items-center space-x-1.5 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+                  className="px-3 py-2 bg-indigo-950/80 border border-indigo-700/60 text-indigo-300 hover:bg-indigo-900 rounded-xl transition flex items-center space-x-1.5 text-xs font-bold cursor-pointer whitespace-nowrap shrink-0"
                 >
                   <Wand2 className="w-3.5 h-3.5 text-indigo-400" />
                   <span className="whitespace-nowrap">Refinar</span>
@@ -850,7 +864,7 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                 <button
                   onClick={onOpenAuditModal}
                   title="Auditoria INVEST"
-                  className="px-3 py-2 bg-emerald-950/80 border border-emerald-800/80 text-emerald-300 hover:bg-emerald-900 rounded-xl transition flex items-center space-x-1.5 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+                  className="px-3 py-2 bg-emerald-950/80 border border-emerald-700/60 text-emerald-300 hover:bg-emerald-900 rounded-xl transition flex items-center space-x-1.5 text-xs font-bold cursor-pointer whitespace-nowrap shrink-0"
                 >
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
                   <span className="whitespace-nowrap">INVEST</span>
@@ -858,16 +872,16 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
 
                 <button
                   onClick={handleSaveBacklog}
-                  className={`px-3 py-2 rounded-xl transition flex items-center space-x-1.5 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 ${
+                  className={`px-3.5 py-2 rounded-xl transition-all flex items-center space-x-1.5 text-xs font-bold cursor-pointer whitespace-nowrap shrink-0 active:scale-98 ${
                     savedFeedback
-                      ? "bg-emerald-600 text-white"
-                      : "bg-slate-800 hover:bg-slate-700 text-white font-bold"
+                      ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/30"
+                      : "bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700"
                   }`}
                 >
                   {savedFeedback ? (
                     <>
-                      <Check className="w-3.5 h-3.5" />
-                      <span className="whitespace-nowrap">Salvo!</span>
+                      <Check className="w-3.5 h-3.5 text-emerald-200" />
+                      <span className="whitespace-nowrap">Salvo no Quadro!</span>
                     </>
                   ) : (
                     <>
@@ -881,25 +895,25 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
 
             {/* Validation Banner Toast Notification */}
             {validationToast && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center justify-between text-xs text-emerald-900 animate-in fade-in duration-300 shadow-sm">
+              <div className="bg-emerald-950/80 border border-emerald-700 rounded-xl p-3.5 flex items-center justify-between text-xs text-emerald-200 animate-in fade-in duration-300 shadow-md">
                 <div className="flex items-center space-x-2.5">
                   <div className="p-1.5 bg-emerald-600 text-white rounded-lg shadow-sm">
                     <CheckCircle2 className="w-4 h-4" />
                   </div>
                   <div>
-                    <span className="font-bold text-emerald-950">Validação de Qualidade Concluída!</span>
-                    <p className="text-[11px] text-emerald-800 font-medium">
-                      Resultado: <strong className="text-emerald-900">{validationToast.score}% de Aprovação</strong> ({validationToast.passed} de {validationToast.total} testes passaram)
+                    <span className="font-bold text-emerald-100">Validação de Qualidade Concluída!</span>
+                    <p className="text-[11px] text-emerald-300 font-medium">
+                      Resultado: <strong className="text-emerald-100">{validationToast.score}% de Aprovação</strong> ({validationToast.passed} de {validationToast.total} testes passaram)
                     </p>
                   </div>
                 </div>
 
                 <button
                   onClick={handleExportPDF}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition flex items-center space-x-1 shadow-sm cursor-pointer"
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg transition flex items-center space-x-1 shadow-sm cursor-pointer"
                 >
                   <FileDown className="w-3.5 h-3.5" />
-                  <span>Baixar PDF Agora</span>
+                  <span>Baixar PDF</span>
                 </button>
               </div>
             )}
@@ -914,62 +928,137 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
             {/* VIEW MODE: INTERACTIVE */}
             {viewMode === "interactive" && (
               <div className="space-y-6">
-                {/* Title Section */}
-                <div>
-                  <label className="block text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">
-                    Título do Incremento
-                  </label>
-                  <input
-                    type="text"
-                    value={currentStory.title}
-                    onChange={(e) =>
-                      updateStoryAndValidate({ ...currentStory, title: e.target.value })
-                    }
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-base font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
-                  />
-                </div>
-
-
-                {/* User Story Card (Como, Quero, Para) */}
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3 shadow-sm">
-                  <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                    <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider">
-                      História de Usuário (User Story)
-                    </span>
-                    <span className="text-[10px] text-slate-500 font-semibold">Padrão Agile / Scrum</span>
+                {/* Title and Metadata Grid */}
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-[10px] uppercase font-extrabold text-slate-400 tracking-wider mb-1.5">
+                      Título do Incremento
+                    </label>
+                    <input
+                      type="text"
+                      value={currentStory.title}
+                      onChange={(e) =>
+                        updateStoryAndValidate({ ...currentStory, title: e.target.value })
+                      }
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-base font-bold text-slate-100 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 shadow-inner transition"
+                    />
                   </div>
 
-                  <div className="space-y-2 text-xs">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-bold text-indigo-800 w-12 shrink-0">Como</span>
+                  {/* Metadata Row: Story Points + Prazo de Entrega (Due Date) + Solicitante */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[10px] uppercase font-extrabold text-slate-400 tracking-wider mb-1 flex items-center space-x-1">
+                        <Zap className="w-3 h-3 text-amber-400" />
+                        <span>Story Points (Fibonacci)</span>
+                      </label>
+                      <select
+                        value={currentStory.storyPoints || ""}
+                        onChange={(e) =>
+                          updateStoryAndValidate({
+                            ...currentStory,
+                            storyPoints: e.target.value ? parseInt(e.target.value, 10) : undefined,
+                          })
+                        }
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-amber-300 focus:outline-none focus:border-amber-500 cursor-pointer shadow-inner"
+                      >
+                        <option value="">Não estimado</option>
+                        <option value="1">1 pt (Muito simples)</option>
+                        <option value="2">2 pts (Simples)</option>
+                        <option value="3">3 pts (Médio)</option>
+                        <option value="5">5 pts (Complexo)</option>
+                        <option value="8">8 pts (Muito complexo)</option>
+                        <option value="13">13 pts (Épico/Grande)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] uppercase font-extrabold text-slate-400 tracking-wider mb-1 flex items-center space-x-1">
+                        <Calendar className="w-3 h-3 text-emerald-400" />
+                        <span>Prazo de Entrega (Lembrete)</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={currentStory.dueDate || ""}
+                        onChange={(e) =>
+                          updateStoryAndValidate({
+                            ...currentStory,
+                            dueDate: e.target.value || undefined,
+                          })
+                        }
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-emerald-500 shadow-inner cursor-pointer"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] uppercase font-extrabold text-slate-400 tracking-wider mb-1 flex items-center space-x-1">
+                        <UserCheck className="w-3 h-3 text-indigo-400" />
+                        <span>Solicitante / PO</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={currentStory.requester || ""}
+                        onChange={(e) =>
+                          updateStoryAndValidate({
+                            ...currentStory,
+                            requester: e.target.value || undefined,
+                          })
+                        }
+                        placeholder="Ex: Product Owner / Negócio"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 shadow-inner"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* User Story Card (Como, Quero, Para) */}
+                <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4.5 space-y-3.5 shadow-inner">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                    <span className="text-xs font-bold text-indigo-300 uppercase tracking-wider flex items-center space-x-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>Estrutura Ágil (User Story)</span>
+                    </span>
+                    <span className="text-[10px] text-indigo-300 font-bold bg-indigo-950/80 px-2 py-0.5 rounded-full border border-indigo-700/60">
+                      Padrão Scrum
+                    </span>
+                  </div>
+
+                  <div className="space-y-2.5 text-xs">
+                    <div className="flex items-center space-x-2.5">
+                      <span className="font-bold text-indigo-300 bg-indigo-950 px-2 py-1 rounded-md border border-indigo-800 w-16 text-center shrink-0">
+                        Como
+                      </span>
                       <input
                         type="text"
                         value={currentStory.story.role}
                         onChange={(e) => handleUpdateStoryField("role", e.target.value)}
                         placeholder="papel do usuário..."
-                        className="flex-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-slate-900 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-sm"
+                        className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-100 font-medium focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 shadow-inner transition"
                       />
                     </div>
 
-                    <div className="flex items-center space-x-2">
-                      <span className="font-bold text-indigo-800 w-12 shrink-0">Quero</span>
+                    <div className="flex items-center space-x-2.5">
+                      <span className="font-bold text-indigo-300 bg-indigo-950 px-2 py-1 rounded-md border border-indigo-800 w-16 text-center shrink-0">
+                        Quero
+                      </span>
                       <input
                         type="text"
                         value={currentStory.story.want}
                         onChange={(e) => handleUpdateStoryField("want", e.target.value)}
                         placeholder="funcionalidade / entrega..."
-                        className="flex-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-slate-900 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-sm"
+                        className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-100 font-medium focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 shadow-inner transition"
                       />
                     </div>
 
-                    <div className="flex items-center space-x-2">
-                      <span className="font-bold text-indigo-800 w-12 shrink-0">Para</span>
+                    <div className="flex items-center space-x-2.5">
+                      <span className="font-bold text-indigo-300 bg-indigo-950 px-2 py-1 rounded-md border border-indigo-800 w-16 text-center shrink-0">
+                        Para
+                      </span>
                       <input
                         type="text"
                         value={currentStory.story.soThat}
                         onChange={(e) => handleUpdateStoryField("soThat", e.target.value)}
                         placeholder="valor / objetivo de negócio..."
-                        className="flex-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-slate-900 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-sm"
+                        className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-100 font-medium focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 shadow-inner transition"
                       />
                     </div>
                   </div>
@@ -977,8 +1066,8 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
 
                 {/* Context Paragraph */}
                 <div>
-                  <label className="block text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">
-                    Contexto do Requisito
+                  <label className="block text-[10px] uppercase font-extrabold text-slate-400 tracking-wider mb-1.5">
+                    Contexto & Detalhamento do Requisito
                   </label>
                   <textarea
                     value={currentStory.context}
@@ -986,20 +1075,20 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                       updateStoryAndValidate({ ...currentStory, context: e.target.value })
                     }
                     rows={3}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs text-slate-800 leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm font-sans"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-xs text-slate-200 leading-relaxed focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 shadow-inner transition font-sans"
                   />
                 </div>
 
                 {/* Acceptance Criteria (AC) */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center space-x-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <label className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center space-x-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                       <span>Critérios de Aceitação ({currentStory.acceptanceCriteria?.length || 0})</span>
                     </label>
                     <button
                       onClick={handleAddAC}
-                      className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold px-2.5 py-1 rounded-lg border border-slate-300 flex items-center space-x-1 transition cursor-pointer"
+                      className="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold px-2.5 py-1 rounded-lg border border-slate-700 flex items-center space-x-1 transition cursor-pointer"
                     >
                       <Plus className="w-3 h-3" />
                       <span>Adicionar AC</span>
@@ -1010,33 +1099,33 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                     {currentStory.acceptanceCriteria?.map((ac, idx) => (
                       <div
                         key={idx}
-                        className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-start space-x-2.5 group shadow-sm"
+                        className="bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-xl p-3 flex items-start space-x-2.5 group shadow-inner transition"
                       >
                         <button
                           type="button"
                           onClick={() => handleToggleACDone(idx)}
                           className={`mt-1 w-4 h-4 rounded border flex items-center justify-center transition shrink-0 cursor-pointer ${
                             ac.done
-                              ? "bg-emerald-600 border-emerald-600 text-white"
-                              : "border-slate-400 bg-white hover:border-emerald-500"
+                              ? "bg-emerald-500 border-emerald-500 text-slate-950"
+                              : "border-slate-600 bg-slate-900 hover:border-emerald-400"
                           }`}
                         >
                           {ac.done && <Check className="w-3 h-3 stroke-[3]" />}
                         </button>
-                        <span className="text-xs font-bold text-emerald-700 shrink-0 mt-0.5">
+                        <span className="text-xs font-extrabold text-emerald-400 shrink-0 mt-0.5 bg-emerald-950 px-1.5 py-0.5 rounded border border-emerald-800">
                           {ac.id}
                         </span>
                         <textarea
                           value={ac.text}
                           onChange={(e) => handleUpdateAC(idx, e.target.value)}
                           rows={2}
-                          className={`flex-1 bg-white text-xs focus:outline-none p-1.5 rounded border border-slate-300 focus:border-indigo-500 ${
-                            ac.done ? "line-through text-slate-400 bg-slate-100" : "text-slate-800 font-medium"
+                          className={`flex-1 bg-slate-900 text-xs focus:outline-none p-2 rounded-lg border border-slate-800 focus:border-indigo-500 transition ${
+                            ac.done ? "line-through text-slate-500 bg-slate-950" : "text-slate-200 font-medium"
                           }`}
                         />
                         <button
                           onClick={() => handleDeleteAC(idx)}
-                          className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-600 p-1 transition cursor-pointer"
+                          className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 p-1 transition cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -1048,13 +1137,13 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                 {/* Business Rules (RN) */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center space-x-2">
-                      <ShieldCheck className="w-4 h-4 text-cyan-600" />
+                    <label className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center space-x-2">
+                      <ShieldCheck className="w-4 h-4 text-cyan-400" />
                       <span>Regras de Negócio ({currentStory.businessRules?.length || 0})</span>
                     </label>
                     <button
                       onClick={handleAddRN}
-                      className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold px-2.5 py-1 rounded-lg border border-slate-300 flex items-center space-x-1 transition cursor-pointer"
+                      className="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold px-2.5 py-1 rounded-lg border border-slate-700 flex items-center space-x-1 transition cursor-pointer"
                     >
                       <Plus className="w-3 h-3" />
                       <span>Adicionar RN</span>
@@ -1065,20 +1154,20 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                     {currentStory.businessRules?.map((rn, idx) => (
                       <div
                         key={idx}
-                        className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-start space-x-2.5 group shadow-sm"
+                        className="bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-xl p-3 flex items-start space-x-2.5 group shadow-inner transition"
                       >
-                        <span className="text-xs font-bold text-cyan-700 shrink-0 mt-0.5">
+                        <span className="text-xs font-extrabold text-cyan-400 shrink-0 mt-0.5 bg-cyan-950 px-1.5 py-0.5 rounded border border-cyan-800">
                           {rn.id}
                         </span>
                         <textarea
                           value={rn.text}
                           onChange={(e) => handleUpdateRN(idx, e.target.value)}
                           rows={2}
-                          className="flex-1 bg-white text-xs text-slate-800 font-medium focus:outline-none p-1.5 rounded border border-slate-300 focus:border-indigo-500"
+                          className="flex-1 bg-slate-900 text-xs text-slate-200 font-medium focus:outline-none p-2 rounded-lg border border-slate-800 focus:border-indigo-500 transition"
                         />
                         <button
                           onClick={() => handleDeleteRN(idx)}
-                          className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-600 p-1 transition cursor-pointer"
+                          className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 p-1 transition cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -1090,13 +1179,13 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                 {/* BDD Scenarios */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center space-x-2">
-                      <FileCode className="w-4 h-4 text-indigo-600" />
+                    <label className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center space-x-2">
+                      <FileCode className="w-4 h-4 text-indigo-400" />
                       <span>Cenários BDD / Gherkin ({currentStory.bddScenarios?.length || 0})</span>
                     </label>
                     <button
                       onClick={handleAddBDD}
-                      className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold px-2.5 py-1 rounded-lg border border-slate-300 flex items-center space-x-1 transition cursor-pointer"
+                      className="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold px-2.5 py-1 rounded-lg border border-slate-700 flex items-center space-x-1 transition cursor-pointer"
                     >
                       <Plus className="w-3 h-3" />
                       <span>Adicionar BDD</span>
@@ -1107,9 +1196,9 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                     {currentStory.bddScenarios?.map((bdd, idx) => (
                       <div
                         key={idx}
-                        className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2 relative group shadow-sm"
+                        className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 space-y-2.5 relative group shadow-inner transition hover:border-slate-700"
                       >
-                        <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                           <input
                             type="text"
                             value={bdd.title}
@@ -1118,19 +1207,21 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                               newBDDs[idx].title = e.target.value;
                               updateStoryAndValidate({ ...currentStory, bddScenarios: newBDDs });
                             }}
-                            className="bg-white font-bold text-xs text-indigo-900 border border-slate-300 focus:outline-none focus:border-indigo-500 px-2 py-0.5 rounded shadow-sm"
+                            className="bg-slate-900 font-bold text-xs text-indigo-300 border border-slate-800 focus:outline-none focus:border-indigo-500 px-2.5 py-1 rounded-lg shadow-inner"
                           />
                           <button
                             onClick={() => handleDeleteBDD(idx)}
-                            className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
+                            className="text-slate-500 hover:text-rose-400 p-1 cursor-pointer"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
 
-                        <div className="font-mono text-[11px] space-y-1.5">
+                        <div className="font-mono text-[11px] space-y-2">
                           <div className="flex items-start space-x-2">
-                            <span className="text-cyan-700 font-bold w-12 shrink-0">Dado</span>
+                            <span className="text-cyan-300 font-bold bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800 w-16 text-center shrink-0">
+                              Dado
+                            </span>
                             <textarea
                               value={bdd.given}
                               onChange={(e) => {
@@ -1139,12 +1230,14 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                                 updateStoryAndValidate({ ...currentStory, bddScenarios: newBDDs });
                               }}
                               rows={1}
-                              className="flex-1 bg-white border border-slate-300 rounded px-2 py-1 text-slate-800 focus:outline-none focus:border-indigo-500 shadow-sm"
+                              className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-slate-200 focus:outline-none focus:border-indigo-500 shadow-inner font-sans text-xs"
                             />
                           </div>
 
                           <div className="flex items-start space-x-2">
-                            <span className="text-cyan-700 font-bold w-12 shrink-0">Quando</span>
+                            <span className="text-amber-300 font-bold bg-amber-950 px-2 py-0.5 rounded border border-amber-800 w-16 text-center shrink-0">
+                              Quando
+                            </span>
                             <textarea
                               value={bdd.when}
                               onChange={(e) => {
@@ -1153,12 +1246,14 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                                 updateStoryAndValidate({ ...currentStory, bddScenarios: newBDDs });
                               }}
                               rows={1}
-                              className="flex-1 bg-white border border-slate-300 rounded px-2 py-1 text-slate-800 focus:outline-none focus:border-indigo-500 shadow-sm"
+                              className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-slate-200 focus:outline-none focus:border-indigo-500 shadow-inner font-sans text-xs"
                             />
                           </div>
 
                           <div className="flex items-start space-x-2">
-                            <span className="text-cyan-700 font-bold w-12 shrink-0">Então</span>
+                            <span className="text-emerald-300 font-bold bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800 w-16 text-center shrink-0">
+                              Então
+                            </span>
                             <textarea
                               value={bdd.then}
                               onChange={(e) => {
@@ -1166,8 +1261,8 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                                 newBDDs[idx].then = e.target.value;
                                 updateStoryAndValidate({ ...currentStory, bddScenarios: newBDDs });
                               }}
-                              rows={2}
-                              className="flex-1 bg-white border border-slate-300 rounded px-2 py-1 text-slate-800 focus:outline-none focus:border-indigo-500 shadow-sm"
+                              rows={1}
+                              className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-slate-200 focus:outline-none focus:border-indigo-500 shadow-inner font-sans text-xs"
                             />
                           </div>
                         </div>
@@ -1178,25 +1273,25 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
 
                 {/* Epic Note Callout */}
                 {currentStory.epicNote && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start space-x-3 text-amber-900 shadow-sm">
-                    <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="bg-amber-950/40 border border-amber-800/80 rounded-2xl p-4 flex items-start space-x-3 text-amber-200 shadow-md">
+                    <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
                     <div>
-                      <div className="font-bold text-amber-950 text-xs">
+                      <div className="font-bold text-amber-100 text-xs">
                         Observação de Múltiplos Incrementos (Épico)
                       </div>
-                      <p className="text-xs text-amber-800 mt-0.5 font-medium">{currentStory.epicNote}</p>
+                      <p className="text-xs text-amber-300 mt-0.5 font-medium">{currentStory.epicNote}</p>
                     </div>
                   </div>
                 )}
 
                 {/* Clarification Questions */}
                 {currentStory.clarificationQuestions && currentStory.clarificationQuestions.length > 0 && (
-                  <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 space-y-2 shadow-sm">
-                    <div className="flex items-center space-x-2 text-indigo-900 font-bold text-xs">
-                      <HelpCircle className="w-4 h-4 text-indigo-600" />
+                  <div className="bg-indigo-950/40 border border-indigo-800/80 rounded-2xl p-4 space-y-2 shadow-md">
+                    <div className="flex items-center space-x-2 text-indigo-200 font-bold text-xs">
+                      <HelpCircle className="w-4 h-4 text-indigo-400" />
                       <span>Dúvidas para Esclarecimento com o PO / Negócio:</span>
                     </div>
-                    <ul className="space-y-1 text-xs text-indigo-900 list-disc list-inside font-medium">
+                    <ul className="space-y-1 text-xs text-indigo-300 list-disc list-inside font-medium">
                       {currentStory.clarificationQuestions.map((q, i) => (
                         <li key={i}>{q}</li>
                       ))}
@@ -1210,21 +1305,21 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
             {viewMode === "markdown" && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-500 font-mono">
+                  <span className="text-xs text-slate-400 font-mono">
                     Markdown estruturado estritamente conforme regras ágeis
                   </span>
                   <button
                     onClick={() => handleCopy(currentStory.rawMarkdown, "Markdown")}
-                    className="flex items-center space-x-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 transition cursor-pointer"
+                    className="flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-700 transition cursor-pointer"
                   >
                     {copiedFormat === "Markdown" ? (
                       <>
-                        <Check className="w-3.5 h-3.5 text-emerald-600" />
-                        <span className="text-emerald-700 font-bold">Copiado!</span>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-emerald-300 font-bold">Copiado!</span>
                       </>
                     ) : (
                       <>
-                        <Copy className="w-3.5 h-3.5 text-slate-500" />
+                        <Copy className="w-3.5 h-3.5 text-slate-400" />
                         <span>Copiar Markdown</span>
                       </>
                     )}
@@ -1237,7 +1332,7 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                     updateStoryAndValidate({ ...currentStory, rawMarkdown: e.target.value })
                   }
                   rows={20}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-4 text-xs text-slate-900 font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-xs text-slate-100 font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner"
                 />
               </div>
             )}
@@ -1246,21 +1341,21 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
             {viewMode === "jira" && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-500 font-mono">
+                  <span className="text-xs text-slate-400 font-mono">
                     Sintaxe adaptada para colagem direta no Atlassian JIRA / Confluence
                   </span>
                   <button
                     onClick={() => handleCopy(generateJiraFormat(currentStory), "JIRA")}
-                    className="flex items-center space-x-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 transition cursor-pointer"
+                    className="flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-700 transition cursor-pointer"
                   >
                     {copiedFormat === "JIRA" ? (
                       <>
-                        <Check className="w-3.5 h-3.5 text-emerald-600" />
-                        <span className="text-emerald-700 font-bold">Copiado!</span>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-emerald-300 font-bold">Copiado!</span>
                       </>
                     ) : (
                       <>
-                        <Copy className="w-3.5 h-3.5 text-slate-500" />
+                        <Copy className="w-3.5 h-3.5 text-slate-400" />
                         <span>Copiar Formato JIRA</span>
                       </>
                     )}
@@ -1271,19 +1366,19 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
                   readOnly
                   value={generateJiraFormat(currentStory)}
                   rows={20}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-4 text-xs text-slate-900 font-mono leading-relaxed focus:outline-none shadow-sm"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-xs text-slate-100 font-mono leading-relaxed focus:outline-none shadow-inner"
                 />
               </div>
             )}
           </div>
         ) : (
-          <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center space-y-4 shadow-sm">
-            <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto border border-indigo-100 shadow-sm">
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-12 text-center space-y-4 shadow-xl shadow-black/40 backdrop-blur-md">
+            <div className="w-16 h-16 bg-indigo-500/10 text-indigo-400 rounded-2xl flex items-center justify-center mx-auto border border-indigo-500/20 shadow-sm">
               <Sparkles className="w-8 h-8 animate-bounce" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">Nenhuma História Gerada Ainda</h3>
-              <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
+              <h3 className="text-base font-bold text-slate-100">Nenhuma História Gerada Ainda</h3>
+              <p className="text-xs text-slate-400 max-w-md mx-auto mt-1">
                 Digite ou cole o escopo na caixa de texto ao lado ou anexe um arquivo para a IA estruturar o incremento e rodar os testes de validação.
               </p>
             </div>

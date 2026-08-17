@@ -92,12 +92,72 @@ export interface UserStory {
   createdAt: string;
   updatedAt: string;
   tags: string[];
+  dueDate?: string; // Formato YYYY-MM-DD
+  assignee?: string;
   audit?: InvestAudit;
   validationReport?: ValidationReport;
   attachedFileName?: string;
   homologationChecklist?: HomologationItem[];
   usedProvider?: LLMProvider;
   usedModel?: string;
+}
+
+export type DeadlineStatus = 'overdue' | 'due_today' | 'due_soon' | 'on_track' | 'no_date';
+
+export function getStoryDeadlineStatus(dueDate?: string): {
+  status: DeadlineStatus;
+  label: string;
+  daysRemaining?: number;
+  badgeClass: string;
+} {
+  if (!dueDate) {
+    return {
+      status: 'no_date',
+      label: 'Sem prazo',
+      badgeClass: 'bg-slate-800/80 text-slate-400 border-slate-700/60',
+    };
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const [year, month, day] = dueDate.split('-').map(Number);
+  const targetDate = new Date(year, month - 1, day);
+  targetDate.setHours(0, 0, 0, 0);
+
+  const diffTime = targetDate.getTime() - today.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    const daysOverdue = Math.abs(diffDays);
+    return {
+      status: 'overdue',
+      label: daysOverdue === 1 ? 'Atrasada (1 dia)' : `Atrasada (${daysOverdue} dias)`,
+      daysRemaining: diffDays,
+      badgeClass: 'bg-rose-950/80 text-rose-300 border-rose-600/80 animate-pulse shadow-sm shadow-rose-950',
+    };
+  } else if (diffDays === 0) {
+    return {
+      status: 'due_today',
+      label: 'Vence Hoje!',
+      daysRemaining: 0,
+      badgeClass: 'bg-amber-950/90 text-amber-300 border-amber-500 font-bold animate-pulse shadow-sm shadow-amber-950',
+    };
+  } else if (diffDays <= 3) {
+    return {
+      status: 'due_soon',
+      label: diffDays === 1 ? 'Vence amanhã' : `Vence em ${diffDays} dias`,
+      daysRemaining: diffDays,
+      badgeClass: 'bg-orange-950/70 text-orange-300 border-orange-600/70',
+    };
+  } else {
+    return {
+      status: 'on_track',
+      label: `Prazo: ${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}`,
+      daysRemaining: diffDays,
+      badgeClass: 'bg-slate-800/90 text-indigo-300 border-slate-700/80',
+    };
+  }
 }
 
 export type LLMProvider = 'gemini' | 'openai';
