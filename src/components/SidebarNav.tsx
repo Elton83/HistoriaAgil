@@ -12,16 +12,18 @@ import {
   PlusCircle,
   BarChart3,
   Workflow,
+  Layers,
   Bell,
 } from "lucide-react";
 import { UserProfile } from "./AuthModal";
 import { EBLogo } from "./EBLogo";
 
 interface SidebarNavProps {
-  activeTab: "generator" | "kanban" | "pipeline" | "reports" | "audit" | "guide" | "admin";
-  setActiveTab: (tab: "generator" | "kanban" | "pipeline" | "reports" | "audit" | "guide" | "admin") => void;
+  activeTab: "generator" | "kanban" | "pipeline" | "poker" | "reports" | "audit" | "guide" | "admin";
+  setActiveTab: (tab: "generator" | "kanban" | "pipeline" | "poker" | "reports" | "audit" | "guide" | "admin") => void;
   savedStoriesCount: number;
   readyStoriesCount: number;
+  unestimatedStoriesCount?: number;
   urgentStoriesCount?: number;
   currentUser: UserProfile | null;
   onLogout: () => void;
@@ -37,6 +39,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
   setActiveTab,
   savedStoriesCount,
   readyStoriesCount,
+  unestimatedStoriesCount = 0,
   urgentStoriesCount = 0,
   currentUser,
   onLogout,
@@ -65,6 +68,16 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
       badgeColor:
         urgentStoriesCount > 0
           ? "bg-amber-950/90 text-amber-300 border-amber-600 animate-pulse font-bold"
+          : "bg-slate-800 text-slate-300 border-slate-700",
+    },
+    {
+      id: "poker" as const,
+      label: "Planning Poker",
+      icon: Layers,
+      badge: unestimatedStoriesCount > 0 ? `${unestimatedStoriesCount} pend.` : "Scrum",
+      badgeColor:
+        unestimatedStoriesCount > 0
+          ? "bg-indigo-950 text-indigo-300 border-indigo-700 font-bold"
           : "bg-slate-800 text-slate-300 border-slate-700",
     },
     {

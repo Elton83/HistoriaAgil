@@ -77,7 +77,7 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
   onOpenAuditModal,
   onResetSystem,
   selectedProvider = "gemini",
-  selectedModel = "gemini-2.5-flash",
+  selectedModel = "gemini-3.7-flash",
   onSelectModel,
 }) => {
   // Local or controlled model selection
@@ -88,7 +88,7 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
   const activeModel = onSelectModel ? selectedModel : modelState;
 
   const handleProviderChange = (p: LLMProvider) => {
-    const defaultModelForProvider = p === "gemini" ? "gemini-2.5-flash" : "gpt-4o-mini";
+    const defaultModelForProvider = p === "gemini" ? "gemini-3.7-flash" : "gpt-4o-mini";
     if (onSelectModel) {
       onSelectModel(p, defaultModelForProvider);
     } else {
@@ -232,7 +232,8 @@ export const GeneratorStudio: React.FC<GeneratorStudioProps> = ({
       extraInstructions,
       imagesPayload,
       activeProvider,
-      activeModel
+      activeModel,
+      dueDate
     );
   };
 

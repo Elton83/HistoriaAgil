@@ -5,6 +5,7 @@ import { BacklogKanban } from "./components/BacklogKanban";
 import { HomologationPipelineView } from "./components/HomologationPipelineView";
 import { ReportsView } from "./components/ReportsView";
 import { AdminPanel } from "./components/AdminPanel";
+import { PlanningPokerView } from "./components/PlanningPokerView";
 import { LoginScreen } from "./components/LoginScreen";
 import { RefineModal } from "./components/RefineModal";
 import { InvestAuditModal } from "./components/InvestAuditModal";
@@ -23,10 +24,10 @@ import {
   clearAllStoriesFromSupabase,
   syncUserProfileWithSupabase,
 } from "./services/supabaseService";
-import { CheckCircle2, AlertCircle, Loader2, Sparkles, PlusCircle, RefreshCw, Database } from "lucide-react";
+import { CheckCircle2, AlertCircle, Loader2, Sparkles, PlusCircle, RefreshCw, Database, Layers } from "lucide-react";
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<"generator" | "kanban" | "pipeline" | "reports" | "audit" | "guide" | "admin">("generator");
+  const [activeTab, setActiveTab] = useState<"generator" | "kanban" | "pipeline" | "poker" | "reports" | "audit" | "guide" | "admin">("generator");
 
   // Supabase Connection Modal State
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
@@ -116,7 +117,7 @@ export default function App() {
 
   // Active AI Provider & Model State (Gemini vs ChatGPT)
   const [selectedProvider, setSelectedProvider] = useState<LLMProvider>("gemini");
-  const [selectedModel, setSelectedModel] = useState<string>("gemini-2.5-flash");
+  const [selectedModel, setSelectedModel] = useState<string>("gemini-3.7-flash");
 
   const handleSelectModel = (provider: LLMProvider, model: string) => {
     setSelectedProvider(provider);
@@ -192,7 +193,8 @@ export default function App() {
     extraInstructions: string,
     images?: Array<{ mimeType: string; base64Data: string; fileName?: string }>,
     provider?: LLMProvider,
-    model?: string
+    model?: string,
+    dueDate?: string
   ) => {
     setIsGenerating(true);
     const activeProvider = provider || selectedProvider;
@@ -225,19 +227,20 @@ export default function App() {
 
       const rawStory: UserStory = {
         id: `story-${Date.now()}`,
-        title: structured.title || "Nova História de Usuário",
-        story: structured.story || { role: "", want: "", soThat: "" },
-        context: structured.context || contextText,
-        acceptanceCriteria: structured.acceptanceCriteria || [],
-        businessRules: structured.businessRules || [],
-        bddScenarios: structured.bddScenarios || [],
-        epicNote: structured.epicNote,
-        clarificationQuestions: structured.clarificationQuestions,
+        title: structured?.title || "Nova História de Usuário",
+        story: structured?.story || { role: "", want: "", soThat: "" },
+        context: structured?.context || contextText,
+        acceptanceCriteria: structured?.acceptanceCriteria || [],
+        businessRules: structured?.businessRules || [],
+        bddScenarios: structured?.bddScenarios || [],
+        epicNote: structured?.epicNote,
+        clarificationQuestions: structured?.clarificationQuestions,
         rawMarkdown: data.rawMarkdown,
         projectName: projectName || "Projeto Geral",
         epicName: epicName || "Incrementos",
         requester: requester || currentUser?.name || "Product Owner",
         status: "draft",
+        dueDate: dueDate || undefined,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         tags: [projectName || "Requisito", activeProvider === "openai" ? "ChatGPT" : "Gemini"].filter(Boolean),
@@ -251,12 +254,12 @@ export default function App() {
 
       setCurrentStory(newStory);
       showToast(
-        `História gerada via ${activeProvider === "openai" ? "ChatGPT" : "Gemini"} (${data.usedModel || activeModel})!`,
+        `História gerada com sucesso (${data.usedModel || activeModel})!`,
         "success"
       );
     } catch (error: any) {
       console.error("Error generating story:", error);
-      showToast(error?.message || "Erro ao gerar história via servidor de IA.", "error");
+      showToast(error?.message || "Erro ao processar requisito no servidor.", "error");
     } finally {
       setIsGenerating(false);
     }
@@ -549,6 +552,7 @@ export default function App() {
         setActiveTab={handleTabChange}
         savedStoriesCount={stories.length}
         readyStoriesCount={stories.filter((s) => s.status === "ready").length}
+        unestimatedStoriesCount={stories.filter((s) => typeof s.storyPoints !== "number").length}
         urgentStoriesCount={stories.filter((s) => {
           const status = getStoryDeadlineStatus(s.dueDate).status;
           return status === "overdue" || status === "due_today" || status === "due_soon";
@@ -575,6 +579,7 @@ export default function App() {
                 <span>
                   {activeTab === "generator" && "Gerador Ágil & Estúdio de Requisitos"}
                   {activeTab === "kanban" && "Quadro Backlog & Fluxo Kanban"}
+                  {activeTab === "poker" && "Planning Poker & Estimativa Ágil de Esforço"}
                   {activeTab === "pipeline" && "Esteira de Homologação & Checklist de Release"}
                   {activeTab === "reports" && "Relatórios Ágeis & Analytics do Backlog"}
                   {activeTab === "admin" && "Painel de Governança & Controle de Acesso (RBAC)"}
@@ -584,6 +589,7 @@ export default function App() {
               <p className="text-[11px] text-slate-400">
                 {activeTab === "generator" && "Crie e edite histórias com AC, RN, BDD estruturados e controle de prazos"}
                 {activeTab === "kanban" && `Gestão e movimentação de ${stories.length} histórias cadastradas com alertas de prazos`}
+                {activeTab === "poker" && "Classificação colaborativa com baralho Fibonacci, T-Shirt, simulação de squad e IA"}
                 {activeTab === "pipeline" && "Validação com 8 passos de homologação, Q.A e publicação em Staging/Main"}
                 {activeTab === "reports" && "Métricas de Story Points, maturidade de requisitos e exportação CSV"}
                 {activeTab === "admin" && "Gerencie perfis, permissões e consulte métricas do banco de dados"}
@@ -634,7 +640,6 @@ export default function App() {
             </div>
           )}
 
-
           {activeTab === "generator" && (
             <GeneratorStudio
               currentStory={currentStory}
@@ -661,6 +666,21 @@ export default function App() {
               onUpdateStatus={handleUpdateStatus}
               onDeleteStory={handleDeleteStory}
               onCreateNewStory={handleCreateNewStory}
+            />
+          )}
+
+          {activeTab === "poker" && (
+            <PlanningPokerView
+              stories={stories}
+              currentUser={currentUser}
+              onUpdateStory={handleUpdateStory}
+              onSelectStoryForGenerator={(story) => {
+                setCurrentStory(story);
+                setActiveTab("generator");
+              }}
+              showToast={showToast}
+              selectedProvider={selectedProvider}
+              selectedModel={selectedModel}
             />
           )}
 

@@ -40,6 +40,18 @@ const getOpenAIClient = () => {
   });
 };
 
+// Resolve valid Gemini Model according to guidelines
+function resolveGeminiModel(model?: string): string {
+  if (!model) return "gemini-3.7-flash";
+  if (model === "gemini-3.1-pro-preview" || model === "gemini-2.5-pro" || model === "gemini-pro") {
+    return "gemini-3.1-pro-preview";
+  }
+  if (model === "gemini-3.7-flash" || model === "gemini-2.5-flash" || model === "gemini-flash") {
+    return "gemini-3.7-flash";
+  }
+  return model.startsWith("gemini-") ? model : "gemini-3.7-flash";
+}
+
 // Intelligent Fallback Story Generator when API key is missing or fails
 function generateFallbackStory(
   contextText: string,
@@ -57,14 +69,22 @@ function generateFallbackStory(
   let soThat = "completar meu objetivo de negócio sem erros nem dependências manuais";
 
   const lower = cleanText.toLowerCase();
-  if (lower.includes("cliente") || lower.includes("pix") || lower.includes("banco") || lower.includes("mobile")) {
+  if (lower.includes("cliente") || lower.includes("pix") || lower.includes("banco") || lower.includes("mobile") || lower.includes("pagamento") || lower.includes("cartão")) {
     role = "Cliente do banco no aplicativo mobile";
-    want = "visualizar uma mensagem clara ao exceder o limite diário de Pix e poder solicitar o aumento de limite na própria tela";
+    want = "visualizar uma mensagem clara ao exceder o limite diário de transações e poder solicitar o aumento de limite na própria tela";
     soThat = "compreender exatamente o motivo do impedimento e pedir mais limite sem acionar o suporte telefônico";
-  } else if (lower.includes("admin") || lower.includes("gestor") || lower.includes("gerente")) {
+  } else if (lower.includes("admin") || lower.includes("gestor") || lower.includes("gerente") || lower.includes("governança") || lower.includes("permissão")) {
     role = "Administrador da plataforma";
-    want = "configurar parâmetros e acompanhar o status das operações em tempo real";
-    soThat = "garantir a segurança, auditoria e controle das transações";
+    want = "configurar parâmetros operacionais e acompanhar o status das solicitações em tempo real";
+    soThat = "garantir a segurança, auditoria e controle das transações da equipe";
+  } else if (lower.includes("login") || lower.includes("autentica") || lower.includes("senha") || lower.includes("acesso")) {
+    role = "Usuário cadastrado";
+    want = "autenticar com segurança utilizando minhas credenciais e recuperar o acesso caso esqueça minha senha";
+    soThat = "acessar com rapidez os serviços protegidos da plataforma";
+  } else if (lower.includes("relatório") || lower.includes("dashboard") || lower.includes("gráfico") || lower.includes("exportar")) {
+    role = "Analista de negócio";
+    want = "filtrar dados por período e exportar relatórios consolidados em formatos padrão";
+    soThat = "apresentar métricas executivas e embasar tomadas de decisão estratégica";
   }
 
   const markdown = `# Título
@@ -86,14 +106,16 @@ ${cleanText}
 
 # Critérios de Aceitação
 AC01 - Apresentar feedback visual e informativo claro para todas as ações executadas pelo usuário.
-AC02 - Validar dados obrigatoriamente e apresentar mensagem de erro amigável em caso de limite ou falha.
-AC03 - Oferecer ação direta de solicitação/regularização quando houver bloqueio ou exceção.
+AC02 - Validar dados obrigatoriamente e apresentar mensagem de erro amigável em caso de limite, preenchimento inválido ou falha operacional.
+AC03 - Oferecer ação direta de solicitação/regularização quando houver bloqueio ou exceção de negócio.
+AC04 - Manter o estado da interface consistente e responsivo durante processamentos assíncronos.
 
 ---
 
 # Regras de Negócio
 RN01 - O sistema deve verificar as permissões e limites do perfil do usuário antes de efetivar a transação.
 RN02 - Todas as solicitações de alteração ou ajuste de limites devem ser registradas em histórico para auditoria.
+RN03 - Notificações críticas devem ser registradas com identificador único de rastreabilidade.
 
 ---
 
@@ -102,12 +124,17 @@ RN02 - Todas as solicitações de alteração ou ajuste de limites devem ser reg
 Dado que o usuário está autenticado na aplicação
 E possui permissão e saldo/limite adequado
 Quando solicitar a confirmação da operação
-Então o sistema conclui a transação e exibe a mensagem de sucesso.
+Então o sistema conclui a transação e exibe a mensagem de sucesso com o comprovante.
 
 ## Cenário 02: Notificação de Limite Excedido e Solicitação
 Dado que a transação excede o limite diário configurado
 Quando o usuário tentar confirmar a transação
 Então o sistema exibe notificação clara explicativa e botão para solicitar aumento de limite.
+
+## Cenário 03: Tratamento de Falha de Conexão ou Validação
+Dado que o serviço externo está temporariamente indisponível
+Quando o usuário acionar a funcionalidade
+Então o sistema apresenta mensagem informativa com opção de tentar novamente sem perda dos dados preenchidos.
 `;
 
   return {
@@ -375,195 +402,221 @@ app.get("/api/health", (req, res) => {
 
 // Endpoint to check active AI Providers Status
 app.get("/api/providers-status", (req, res) => {
-  const geminiAvailable = !!process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "your-gemini-api-key";
-  const openaiAvailable = !!process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== "your-openai-api-key";
+  try {
+    const geminiAvailable = !!process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "your-gemini-api-key";
+    const openaiAvailable = !!process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== "your-openai-api-key";
 
-  res.json({
-    gemini: {
-      available: geminiAvailable,
-      models: ["gemini-2.5-flash", "gemini-2.5-pro"],
-    },
-    openai: {
-      available: openaiAvailable,
-      models: ["gpt-4o-mini", "gpt-4o"],
-    },
-  });
+    res.json({
+      gemini: {
+        available: geminiAvailable,
+        models: ["gemini-3.7-flash", "gemini-3.1-pro-preview"],
+      },
+      openai: {
+        available: openaiAvailable,
+        models: ["gpt-4o-mini", "gpt-4o"],
+      },
+    });
+  } catch (err: any) {
+    res.json({
+      gemini: { available: false, models: ["gemini-3.7-flash"] },
+      openai: { available: false, models: ["gpt-4o-mini"] },
+    });
+  }
 });
 
 // Endpoint to Generate User Story from Context (Gemini or OpenAI / ChatGPT)
 app.post("/api/generate-story", async (req, res) => {
-  const {
-    contextText,
-    projectName,
-    epicName,
-    requester,
-    extraInstructions,
-    images,
-    provider = "gemini",
-    model = "gemini-2.5-flash",
-  } = req.body;
+  try {
+    const {
+      contextText,
+      projectName,
+      epicName,
+      requester,
+      extraInstructions,
+      images,
+      provider = "gemini",
+      model = "gemini-3.7-flash",
+    } = req.body;
 
-  if (!contextText || typeof contextText !== "string") {
-    return res.status(400).json({ error: "Contexto de negócio não fornecido." });
-  }
-
-  let fullPrompt = `CONTEXTO DO REQUISITO FORNECIDO:\n\n${contextText}\n\n`;
-  if (projectName) fullPrompt += `Projeto: ${projectName}\n`;
-  if (epicName) fullPrompt += `Épico Relacionado: ${epicName}\n`;
-  if (requester) fullPrompt += `Demandante / Solicitante: ${requester}\n`;
-  if (extraInstructions) fullPrompt += `Instruções Adicionais de Foco: ${extraInstructions}\n`;
-
-  fullPrompt += `\nLembre-se de seguir rigorosamente todas as regras e o formato exigido de resposta.`;
-
-  // Option 1: OpenAI (ChatGPT)
-  if (provider === "openai") {
-    const openai = getOpenAIClient();
-    if (openai) {
-      try {
-        const targetModel = model.startsWith("gpt-") ? model : "gpt-4o-mini";
-        const messages: any[] = [
-          { role: "system", content: SYSTEM_INSTRUCTION_PROMPT },
-        ];
-
-        if (Array.isArray(images) && images.length > 0) {
-          const userContent: any[] = [{ type: "text", text: fullPrompt }];
-          images.forEach((img: { mimeType?: string; base64Data?: string }) => {
-            if (img.base64Data && img.mimeType) {
-              let mime = img.mimeType;
-              if (mime === "image/jpg" || mime === "image/pjpeg") mime = "image/jpeg";
-              const cleanBase64 = img.base64Data.replace(/^data:[^;]+;base64,/, "").trim();
-              userContent.push({
-                type: "image_url",
-                image_url: {
-                  url: `data:${mime};base64,${cleanBase64}`,
-                },
-              });
-            }
-          });
-          messages.push({ role: "user", content: userContent });
-        } else {
-          messages.push({ role: "user", content: fullPrompt });
-        }
-
-        const completion = await openai.chat.completions.create({
-          model: targetModel,
-          messages,
-          temperature: 0.2,
-        });
-
-        const markdownOutput = completion.choices[0]?.message?.content || "";
-        const structuredOutput = parseMarkdownToStructured(markdownOutput);
-
-        return res.json({
-          rawMarkdown: markdownOutput,
-          structured: structuredOutput,
-          usedProvider: "openai",
-          usedModel: targetModel,
-        });
-      } catch (error: any) {
-        console.warn("Falha na chamada OpenAI, tentando contingência:", error?.message || error);
-      }
-    } else {
-      console.warn("OPENAI_API_KEY não configurada. Tentando fallback.");
+    if (!contextText || typeof contextText !== "string" || !contextText.trim()) {
+      return res.status(400).json({ error: "Contexto de negócio não fornecido." });
     }
-  }
 
-  // Option 2: Google Gemini (Default or Secondary)
-  const ai = getGeminiClient();
-  if (ai) {
-    try {
-      const targetModel = model.startsWith("gemini-") ? model : "gemini-2.5-flash";
-      const parts: any[] = [{ text: fullPrompt }];
+    let fullPrompt = `CONTEXTO DO REQUISITO FORNECIDO:\n\n${contextText.trim()}\n\n`;
+    if (projectName) fullPrompt += `Projeto: ${projectName}\n`;
+    if (epicName) fullPrompt += `Épico Relacionado: ${epicName}\n`;
+    if (requester) fullPrompt += `Demandante / Solicitante: ${requester}\n`;
+    if (extraInstructions) fullPrompt += `Instruções Adicionais de Foco: ${extraInstructions}\n`;
 
-      if (Array.isArray(images) && images.length > 0) {
-        images.forEach((img: { mimeType?: string; base64Data?: string }) => {
-          if (img.base64Data && img.mimeType) {
-            let mime = img.mimeType;
-            if (mime === "image/jpg" || mime === "image/pjpeg") mime = "image/jpeg";
-            const cleanBase64 = img.base64Data.replace(/^data:[^;]+;base64,/, "").trim();
+    fullPrompt += `\nLembre-se de seguir rigorosamente todas as regras e o formato exigido de resposta.`;
 
-            parts.unshift({
-              inlineData: {
-                mimeType: mime,
-                data: cleanBase64,
-              },
+    // Option 1: OpenAI (ChatGPT)
+    if (provider === "openai") {
+      const openai = getOpenAIClient();
+      if (openai) {
+        try {
+          const targetModel = model.startsWith("gpt-") ? model : "gpt-4o-mini";
+          const messages: any[] = [
+            { role: "system", content: SYSTEM_INSTRUCTION_PROMPT },
+          ];
+
+          if (Array.isArray(images) && images.length > 0) {
+            const userContent: any[] = [{ type: "text", text: fullPrompt }];
+            for (const img of images) {
+              if (img && img.base64Data && img.mimeType) {
+                let mime = img.mimeType;
+                if (mime === "image/jpg" || mime === "image/pjpeg") mime = "image/jpeg";
+                const cleanBase64 = String(img.base64Data).replace(/^data:[^;]+;base64,/, "").trim();
+                if (cleanBase64) {
+                  userContent.push({
+                    type: "image_url",
+                    image_url: {
+                      url: `data:${mime};base64,${cleanBase64}`,
+                    },
+                  });
+                }
+              }
+            }
+            messages.push({ role: "user", content: userContent });
+          } else {
+            messages.push({ role: "user", content: fullPrompt });
+          }
+
+          const completion = await openai.chat.completions.create({
+            model: targetModel,
+            messages,
+            temperature: 0.2,
+          });
+
+          const markdownOutput = completion.choices[0]?.message?.content || "";
+          if (markdownOutput.trim()) {
+            const structuredOutput = parseMarkdownToStructured(markdownOutput);
+            return res.json({
+              rawMarkdown: markdownOutput,
+              structured: structuredOutput,
+              usedProvider: "openai",
+              usedModel: targetModel,
             });
           }
-        });
+        } catch (error: any) {
+          console.warn("Falha na chamada OpenAI, tentando contingência:", error?.message || error);
+        }
       }
-
-      const response = await ai.models.generateContent({
-        model: targetModel,
-        contents: { parts },
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION_PROMPT,
-          temperature: 0.2,
-        },
-      });
-
-      const markdownOutput = response.text || "";
-      const structuredOutput = parseMarkdownToStructured(markdownOutput);
-
-      return res.json({
-        rawMarkdown: markdownOutput,
-        structured: structuredOutput,
-        usedProvider: "gemini",
-        usedModel: targetModel,
-      });
-    } catch (error: any) {
-      console.warn("Falha na chamada da API Gemini, utilizando gerador de contingência:", error?.message || error);
     }
-  }
 
-  // Option 3: If OpenAI was not initially requested and Gemini failed, check if OpenAI is available
-  if (provider !== "openai") {
-    const openai = getOpenAIClient();
-    if (openai) {
+    // Option 2: Google Gemini (Default or Secondary)
+    const ai = getGeminiClient();
+    if (ai) {
       try {
-        const completion = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
-          messages: [
-            { role: "system", content: SYSTEM_INSTRUCTION_PROMPT },
-            { role: "user", content: fullPrompt },
-          ],
-          temperature: 0.2,
+        const targetModel = resolveGeminiModel(model);
+        const parts: any[] = [];
+
+        if (Array.isArray(images) && images.length > 0) {
+          for (const img of images) {
+            if (img && img.base64Data && img.mimeType) {
+              let mime = img.mimeType;
+              if (mime === "image/jpg" || mime === "image/pjpeg") mime = "image/jpeg";
+              const cleanBase64 = String(img.base64Data).replace(/^data:[^;]+;base64,/, "").trim();
+              if (cleanBase64) {
+                parts.push({
+                  inlineData: {
+                    mimeType: mime,
+                    data: cleanBase64,
+                  },
+                });
+              }
+            }
+          }
+        }
+        parts.push({ text: fullPrompt });
+
+        const contents = parts.length === 1 ? parts[0].text : { parts };
+
+        const response = await ai.models.generateContent({
+          model: targetModel,
+          contents: contents,
+          config: {
+            systemInstruction: SYSTEM_INSTRUCTION_PROMPT,
+            temperature: 0.2,
+          },
         });
-        const markdownOutput = completion.choices[0]?.message?.content || "";
-        return res.json({
-          rawMarkdown: markdownOutput,
-          structured: parseMarkdownToStructured(markdownOutput),
-          usedProvider: "openai",
-          usedModel: "gpt-4o-mini",
-        });
-      } catch (err) {
-        // Continue to fallback
+
+        const markdownOutput = response.text || "";
+        if (markdownOutput.trim()) {
+          const structuredOutput = parseMarkdownToStructured(markdownOutput);
+          return res.json({
+            rawMarkdown: markdownOutput,
+            structured: structuredOutput,
+            usedProvider: "gemini",
+            usedModel: targetModel,
+          });
+        }
+      } catch (error: any) {
+        console.warn("Falha na chamada da API Gemini, utilizando gerador de contingência:", error?.message || error);
       }
     }
-  }
 
-  // Fallback intelligent story generator
-  const fallback = generateFallbackStory(contextText, projectName, epicName, requester, extraInstructions);
-  return res.json({
-    ...fallback,
-    usedProvider: "fallback",
-    usedModel: "local-heuristic",
-  });
+    // Option 3: If OpenAI was not initially requested and Gemini failed, check if OpenAI is available
+    if (provider !== "openai") {
+      const openai = getOpenAIClient();
+      if (openai) {
+        try {
+          const completion = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+              { role: "system", content: SYSTEM_INSTRUCTION_PROMPT },
+              { role: "user", content: fullPrompt },
+            ],
+            temperature: 0.2,
+          });
+          const markdownOutput = completion.choices[0]?.message?.content || "";
+          if (markdownOutput.trim()) {
+            return res.json({
+              rawMarkdown: markdownOutput,
+              structured: parseMarkdownToStructured(markdownOutput),
+              usedProvider: "openai",
+              usedModel: "gpt-4o-mini",
+            });
+          }
+        } catch (err) {
+          // Continue to fallback
+        }
+      }
+    }
+
+    // Fallback intelligent story generator
+    const fallback = generateFallbackStory(contextText, projectName, epicName, requester, extraInstructions);
+    return res.json({
+      ...fallback,
+      usedProvider: "fallback",
+      usedModel: "local-heuristic",
+    });
+  } catch (globalErr: any) {
+    console.error("Erro inesperado em generate-story, acionando fallback:", globalErr);
+    const fallback = generateFallbackStory(req.body?.contextText || "Requisito de Sistema");
+    return res.json({
+      ...fallback,
+      usedProvider: "fallback",
+      usedModel: "local-heuristic",
+    });
+  }
 });
 
 // Endpoint to Refine or Edit Story with AI
 app.post("/api/refine-story", async (req, res) => {
-  const {
-    currentStoryMarkdown,
-    refinementInstruction,
-    provider = "gemini",
-    model = "gemini-2.5-flash",
-  } = req.body;
+  try {
+    const {
+      currentStoryMarkdown,
+      refinementInstruction,
+      provider = "gemini",
+      model = "gemini-3.7-flash",
+    } = req.body;
 
-  if (!currentStoryMarkdown || !refinementInstruction) {
-    return res.status(400).json({ error: "História atual ou instrução de refinamento ausente." });
-  }
+    if (!currentStoryMarkdown || !refinementInstruction) {
+      return res.status(400).json({ error: "História atual ou instrução de refinamento ausente." });
+    }
 
-  const prompt = `
+    const prompt = `
 HISTÓRIA DE USUÁRIO ATUAL:
 ${currentStoryMarkdown}
 
@@ -579,8 +632,168 @@ Reescreva a História de Usuário incorporando exatamente esta melhoria ou ajust
 # Cenários BDD
 `;
 
-  // Try OpenAI if selected
-  if (provider === "openai") {
+    // Try OpenAI if selected
+    if (provider === "openai") {
+      const openai = getOpenAIClient();
+      if (openai) {
+        try {
+          const targetModel = model.startsWith("gpt-") ? model : "gpt-4o-mini";
+          const completion = await openai.chat.completions.create({
+            model: targetModel,
+            messages: [
+              { role: "system", content: SYSTEM_INSTRUCTION_PROMPT },
+              { role: "user", content: prompt },
+            ],
+            temperature: 0.2,
+          });
+
+          const markdownOutput = completion.choices[0]?.message?.content || "";
+          if (markdownOutput.trim()) {
+            const structuredOutput = parseMarkdownToStructured(markdownOutput);
+            return res.json({
+              rawMarkdown: markdownOutput,
+              structured: structuredOutput,
+              usedProvider: "openai",
+              usedModel: targetModel,
+            });
+          }
+        } catch (error: any) {
+          console.warn("Falha no refinamento OpenAI:", error?.message || error);
+        }
+      }
+    }
+
+    // Try Gemini
+    const ai = getGeminiClient();
+    if (ai) {
+      try {
+        const targetModel = resolveGeminiModel(model);
+        const response = await ai.models.generateContent({
+          model: targetModel,
+          contents: prompt,
+          config: {
+            systemInstruction: SYSTEM_INSTRUCTION_PROMPT,
+            temperature: 0.2,
+          },
+        });
+
+        const markdownOutput = response.text || "";
+        if (markdownOutput.trim()) {
+          const structuredOutput = parseMarkdownToStructured(markdownOutput);
+          return res.json({
+            rawMarkdown: markdownOutput,
+            structured: structuredOutput,
+            usedProvider: "gemini",
+            usedModel: targetModel,
+          });
+        }
+      } catch (error: any) {
+        console.warn("Falha no refinamento Gemini, executando contingência:", error?.message || error);
+      }
+    }
+
+    const fallback = refineFallbackStory(currentStoryMarkdown, refinementInstruction);
+    return res.json(fallback);
+  } catch (err: any) {
+    console.error("Erro inesperado em refine-story, fallback acionado:", err);
+    const fallback = refineFallbackStory(req.body?.currentStoryMarkdown || "", req.body?.refinementInstruction || "");
+    return res.json(fallback);
+  }
+});
+
+// Endpoint for Planning Poker AI Estimation & Squad Simulation
+app.post("/api/poker-ai-estimate", async (req, res) => {
+  try {
+    const { story, provider = "gemini", model = "gemini-3.7-flash" } = req.body;
+
+    if (!story) {
+      return res.status(400).json({ error: "Dados da história não fornecidos." });
+    }
+
+    const storyTitle = story.title || "História de Usuário";
+    const role = story.story?.role || "";
+    const want = story.story?.want || "";
+    const soThat = story.story?.soThat || "";
+    const acCount = Array.isArray(story.acceptanceCriteria) ? story.acceptanceCriteria.length : 0;
+    const rnCount = Array.isArray(story.businessRules) ? story.businessRules.length : 0;
+    const bddCount = Array.isArray(story.bddScenarios) ? story.bddScenarios.length : 0;
+    const context = story.context || "";
+
+    const prompt = `
+Você é um Agile Coach e Especialista Técnico sênior em Planning Poker e refinamento de Backlog Scrum.
+Avalie a complexidade técnica e esforço da seguinte História de Usuário:
+
+TÍTULO: ${storyTitle}
+COMO: ${role}
+QUERO: ${want}
+PARA: ${soThat}
+
+QUANTIDADE DE CRITÉRIOS DE ACEITE: ${acCount}
+QUANTIDADE DE REGRAS DE NEGÓCIO: ${rnCount}
+QUANTIDADE DE CENÁRIOS BDD: ${bddCount}
+
+CONTEXTO TÉCNICO E DE NEGÓCIO:
+${context}
+
+CRITÉRIOS DE ACEITAÇÃO:
+${(story.acceptanceCriteria || []).map((ac: any, i: number) => `${i + 1}. ${typeof ac === 'string' ? ac : ac.text}`).join("\n")}
+
+REGRAS DE NEGÓCIO:
+${(story.businessRules || []).map((rn: any, i: number) => `${i + 1}. ${typeof rn === 'string' ? rn : rn.text}`).join("\n")}
+
+CENÁRIOS BDD:
+${(story.bddScenarios || []).map((b: any, i: number) => `Cenário ${i + 1}: ${b.title || ''} - Dado ${b.given || ''}, Quando ${b.when || ''}, Então ${b.then || ''}`).join("\n")}
+
+INSTRUÇÃO:
+Analise o esforço usando a escala Fibonacci (1, 2, 3, 5, 8, 13, 20, 40).
+Responda EXCLUSIVAMENTE em formato JSON com a seguinte estrutura:
+{
+  "suggestedPoints": 5, // número Fibonacci recomendado
+  "suggestedTshirt": "M", // PP, P, M, G ou GG
+  "confidence": "Alta", // "Alta", "Média" ou "Baixa"
+  "justification": "Explicação técnica concisa sobre os desafios de front-end, backend, integrações e testes.",
+  "breakdown": {
+    "uiComplexity": { "score": 3, "note": "Complexidade de telas e componentes" },
+    "backendComplexity": { "score": 4, "note": "Regras de negócio e persistência" },
+    "integrationRisk": { "score": 2, "note": "APIs externas e dependências" },
+    "testEffort": { "score": 3, "note": "Cenários de teste e validações" }
+  },
+  "keyQuestions": [
+    "Dúvida técnica ou de negócio importante a ser alinhada durante o planning"
+  ],
+  "squadVotes": [
+    { "name": "Tech Lead", "role": "Arquiteto de Software", "vote": 5, "comment": "Visão arquitetural sobre persistência e consistência" },
+    { "name": "Dev Sênior", "role": "Backend Lead", "vote": 5, "comment": "Comentário sobre lógica de negócio e integrações" },
+    { "name": "Dev Frontend", "role": "Frontend Engineer", "vote": 3, "comment": "Comentário sobre usabilidade e estados de UI" },
+    { "name": "QA Specialist", "role": "Quality Assurance", "vote": 5, "comment": "Comentário sobre volume de cenários de teste" }
+  ]
+}
+`;
+
+    // Try Gemini first
+    if (provider !== "openai") {
+      const ai = getGeminiClient();
+      if (ai) {
+        try {
+          const targetModel = resolveGeminiModel(model);
+          const response = await ai.models.generateContent({
+            model: targetModel,
+            contents: prompt,
+            config: {
+              responseMimeType: "application/json",
+              temperature: 0.2,
+            },
+          });
+          if (response.text) {
+            return res.json(JSON.parse(response.text));
+          }
+        } catch (err: any) {
+          console.warn("Falha no Gemini Planning Poker, tentando OpenAI ou fallback:", err?.message || err);
+        }
+      }
+    }
+
+    // Try OpenAI
     const openai = getOpenAIClient();
     if (openai) {
       try {
@@ -588,68 +801,91 @@ Reescreva a História de Usuário incorporando exatamente esta melhoria ou ajust
         const completion = await openai.chat.completions.create({
           model: targetModel,
           messages: [
-            { role: "system", content: SYSTEM_INSTRUCTION_PROMPT },
+            { role: "system", content: "Você é um Agile Coach especialista em Planning Poker. Responda em JSON." },
             { role: "user", content: prompt },
           ],
+          response_format: { type: "json_object" },
           temperature: 0.2,
         });
-
-        const markdownOutput = completion.choices[0]?.message?.content || "";
-        const structuredOutput = parseMarkdownToStructured(markdownOutput);
-
-        return res.json({
-          rawMarkdown: markdownOutput,
-          structured: structuredOutput,
-          usedProvider: "openai",
-          usedModel: targetModel,
-        });
-      } catch (error: any) {
-        console.warn("Falha no refinamento OpenAI:", error?.message || error);
+        const text = completion.choices[0]?.message?.content || "{}";
+        return res.json(JSON.parse(text));
+      } catch (err: any) {
+        console.warn("Falha no OpenAI Planning Poker:", err?.message || err);
       }
     }
-  }
 
-  // Try Gemini
-  const ai = getGeminiClient();
-  if (ai) {
-    try {
-      const targetModel = model.startsWith("gemini-") ? model : "gemini-2.5-flash";
-      const response = await ai.models.generateContent({
-        model: targetModel,
-        contents: prompt,
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION_PROMPT,
-          temperature: 0.2,
-        },
-      });
-
-      const markdownOutput = response.text || "";
-      const structuredOutput = parseMarkdownToStructured(markdownOutput);
-
-      return res.json({
-        rawMarkdown: markdownOutput,
-        structured: structuredOutput,
-        usedProvider: "gemini",
-        usedModel: targetModel,
-      });
-    } catch (error: any) {
-      console.warn("Falha no refinamento Gemini, executando contingência:", error?.message || error);
+    // Heuristic Fallback
+    const totalItems = acCount + rnCount + bddCount;
+    let points = 3;
+    let tshirt: "PP" | "P" | "M" | "G" | "GG" = "P";
+    if (totalItems <= 3) {
+      points = 2;
+      tshirt = "P";
+    } else if (totalItems <= 7) {
+      points = 5;
+      tshirt = "M";
+    } else if (totalItems <= 12) {
+      points = 8;
+      tshirt = "G";
+    } else {
+      points = 13;
+      tshirt = "GG";
     }
-  }
 
-  const fallback = refineFallbackStory(currentStoryMarkdown, refinementInstruction);
-  return res.json(fallback);
+    return res.json({
+      suggestedPoints: points,
+      suggestedTshirt: tshirt,
+      confidence: "Média",
+      justification: `Com base em ${acCount} critérios de aceite, ${rnCount} regras de negócio e ${bddCount} cenários BDD analisados estruturalmente.`,
+      breakdown: {
+        uiComplexity: { score: points > 5 ? 4 : 3, note: "Interface de usuário e validações reativas" },
+        backendComplexity: { score: points >= 8 ? 4 : 3, note: "Processamento de regras e consistência" },
+        integrationRisk: { score: points >= 8 ? 3 : 2, note: "Serviços e APIs associadas" },
+        testEffort: { score: bddCount >= 3 ? 4 : 3, note: `${bddCount} fluxos de teste e homologação` }
+      },
+      keyQuestions: [
+        "Existe dependência com algum serviço de terceiros ou endpoint externo?",
+        "Os critérios de aceitação cobrem todos os fluxos de erro e exceção?"
+      ],
+      squadVotes: [
+        { name: "Tech Lead", role: "Arquiteto", vote: points, comment: `Estrutura com ${totalItems} itens exige esforço equilibrado.` },
+        { name: "Dev Backend", role: "Sênior", vote: points, comment: "Regras de negócio bem delimitadas." },
+        { name: "Dev Frontend", role: "Pleno", vote: Math.max(1, points <= 5 ? points : points - 3), comment: "Fluxo de interface direto com boa previsibilidade." },
+        { name: "QA Specialist", role: "Quality Assurance", vote: points, comment: `Garante cobertura completa dos ${bddCount} cenários BDD.` }
+      ]
+    });
+  } catch (err: any) {
+    console.error("Erro em /api/poker-ai-estimate:", err);
+    return res.json({
+      suggestedPoints: 5,
+      suggestedTshirt: "M",
+      confidence: "Baixa",
+      justification: "Estimativa calculada pelo motor de contingência ágil.",
+      breakdown: {
+        uiComplexity: { score: 3, note: "Padrão" },
+        backendComplexity: { score: 3, note: "Padrão" },
+        integrationRisk: { score: 2, note: "Baixo" },
+        testEffort: { score: 3, note: "Padrão" }
+      },
+      keyQuestions: ["Revisar os critérios de aceite com o Product Owner."],
+      squadVotes: [
+        { name: "Tech Lead", role: "Arquiteto", vote: 5, comment: "Estimativa base padrão." },
+        { name: "Dev Sênior", role: "Backend", vote: 5, comment: "Esforço mediano esperado." }
+      ]
+    });
+  }
 });
 
 // Endpoint for INVEST criteria & Quality Audit
 app.post("/api/audit-invest", async (req, res) => {
-  const { storyMarkdown, provider = "gemini", model = "gemini-2.5-flash" } = req.body;
+  try {
+    const { storyMarkdown, provider = "gemini", model = "gemini-3.7-flash" } = req.body;
 
-  if (!storyMarkdown) {
-    return res.status(400).json({ error: "História de usuário ausente." });
-  }
+    if (!storyMarkdown) {
+      return res.status(400).json({ error: "História de usuário ausente." });
+    }
 
-  const prompt = `
+    const prompt = `
 Avalie a seguinte História de Usuário segundo o acrônimo INVEST do Scrum / Requisitos Ágeis:
 - **I**ndependent (Independente)
 - **N**egotiable (Negociável)
@@ -668,54 +904,60 @@ Forneça um relatório sucinto em JSON com os seguintes campos:
 - estimatedStoryPoints: objeto { points: number, justification: string }
 `;
 
-  // Try OpenAI if selected
-  if (provider === "openai") {
-    const openai = getOpenAIClient();
-    if (openai) {
-      try {
-        const targetModel = model.startsWith("gpt-") ? model : "gpt-4o-mini";
-        const completion = await openai.chat.completions.create({
-          model: targetModel,
-          messages: [
-            {
-              role: "system",
-              content: "Você é um auditor de requisitos ágeis especialista no acrônimo INVEST. Responda em JSON.",
-            },
-            { role: "user", content: prompt },
-          ],
-          response_format: { type: "json_object" },
-          temperature: 0.1,
-        });
+    // Try OpenAI if selected
+    if (provider === "openai") {
+      const openai = getOpenAIClient();
+      if (openai) {
+        try {
+          const targetModel = model.startsWith("gpt-") ? model : "gpt-4o-mini";
+          const completion = await openai.chat.completions.create({
+            model: targetModel,
+            messages: [
+              {
+                role: "system",
+                content: "Você é um auditor de requisitos ágeis especialista no acrônimo INVEST. Responda em JSON.",
+              },
+              { role: "user", content: prompt },
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.1,
+          });
 
-        const text = completion.choices[0]?.message?.content || "{}";
-        return res.json(JSON.parse(text));
-      } catch (error: any) {
-        console.warn("Falha no audit INVEST OpenAI:", error?.message || error);
+          const text = completion.choices[0]?.message?.content || "{}";
+          return res.json(JSON.parse(text));
+        } catch (error: any) {
+          console.warn("Falha no audit INVEST OpenAI:", error?.message || error);
+        }
       }
     }
-  }
 
-  // Try Gemini
-  const ai = getGeminiClient();
-  if (ai) {
-    try {
-      const targetModel = model.startsWith("gemini-") ? model : "gemini-2.5-flash";
-      const response = await ai.models.generateContent({
-        model: targetModel,
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          temperature: 0.1,
-        },
-      });
+    // Try Gemini
+    const ai = getGeminiClient();
+    if (ai) {
+      try {
+        const targetModel = resolveGeminiModel(model);
+        const response = await ai.models.generateContent({
+          model: targetModel,
+          contents: prompt,
+          config: {
+            responseMimeType: "application/json",
+            temperature: 0.1,
+          },
+        });
 
-      return res.json(JSON.parse(response.text || "{}"));
-    } catch (error: any) {
-      console.warn("Falha na auditoria INVEST Gemini, gerando relatório de contingência:", error?.message || error);
+        if (response.text) {
+          return res.json(JSON.parse(response.text));
+        }
+      } catch (error: any) {
+        console.warn("Falha na auditoria INVEST Gemini, gerando relatório de contingência:", error?.message || error);
+      }
     }
-  }
 
-  return res.json(auditFallbackInvest(storyMarkdown));
+    return res.json(auditFallbackInvest(storyMarkdown));
+  } catch (err: any) {
+    console.error("Erro inesperado em audit-invest:", err);
+    return res.json(auditFallbackInvest(req.body?.storyMarkdown || ""));
+  }
 });
 
 
